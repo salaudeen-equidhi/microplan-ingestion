@@ -1,0 +1,242 @@
+# Excel Validation Configuration
+# This YAML file defines validation rules for microplan Excel files
+# FULLY CONFIGURABLE - Edit patterns to match your data structure
+
+validation_settings:
+  upload_folder: "uploads"
+  error_folder: "error"
+  supported_extensions:
+    - ".xlsx"
+    - ".xls"
+    - ".csv"
+
+# =============================================================================
+# COLUMN MAPPINGS - Customize based on your Excel/CSV structure
+# These are PATTERNS (case-insensitive) - if column name CONTAINS any pattern, it matches
+# =============================================================================
+column_mappings:
+
+  # Boundary/Hierarchy columns - ADD YOUR HIERARCHY LEVEL NAMES HERE
+  # Only add columns that are ACTUAL hierarchy levels in your data
+  boundary_columns:
+    - "boundary"
+    - "boundary_name"
+    - "province"
+    - "distrito"
+    - "district"
+    - "municipality"
+    - "locality"
+    - "localidade"
+    - "posto"
+    - "village"
+    - "aldeias"
+    - "povoados"
+    - "sub-hill"
+    - "subhill"
+    - "commune"
+    - "chiefdom"
+    - "subcounty"
+    - "county"
+    - "parish"
+    - "cell"
+
+  # Facility columns
+  facility_columns:
+    - "facility"
+    - "facility_name"
+    - "us"
+    - "deposito"
+    - "unidade"
+    - "unidade sanitaria"
+    - "distribution_site"
+    - "health_facility"
+    - "warehouse"
+    - "site"
+    - "center"
+    - "clinic"
+    - "hospital"
+
+  # Target columns (numeric values) - ADD ALL YOUR TARGET COLUMN PATTERNS
+  # Can have multiple targets: target, target1, target2, population, spaq, etc.
+  target_columns:
+    - "target"
+    - "population"
+    - "households"
+    - "total"
+    - "number"
+    - "count"
+    - "spaq"
+    - "qty"
+    - "quantity"
+    - "beneficiaries"
+    - "coverage"
+
+  # User/Contact columns
+  user_columns:
+    - "user"
+    - "user_name"
+    - "username"
+    - "contact"
+    - "mobile"
+    - "phone"
+    - "team_lead"
+    - "supervisor"
+    - "assigned"
+    - "officer"
+
+# =============================================================================
+# EXCLUDE PATTERNS - Columns to SKIP during certain checks
+# =============================================================================
+exclude_patterns:
+  # Columns to exclude from UNIQUENESS check (these are types/levels, not names)
+  exclude_from_uniqueness:
+    - "type"
+    - "level"
+    - "hierarchy"
+    - "tier"
+    - "category"
+    - "classification"
+    - "boundary_type"
+    - "boundary_level"
+    - "admin_level"
+    - "status"
+    - "parent_code"
+    - "parent_id"
+    - "parent_name"
+    - "parentcode"
+
+  # Columns to exclude from NAMING CONVENTION check (codes/IDs can have any format)
+  exclude_from_naming:
+    - "code"
+    - "id"
+    - "key"
+    - "uuid"
+    - "guid"
+    - "hash"
+    - "token"
+    - "identifier"
+
+  # Root parent indicators - these won't be flagged as "missing parent"
+  root_indicators:
+    - ""
+    - "root"
+    - "null"
+    - "na"
+    - "n/a"
+    - "none"
+    - "-"
+    - "top"
+    - "country"
+
+# =============================================================================
+# VALIDATION RULES - Enable/disable and configure each rule
+# =============================================================================
+validation_rules:
+
+  # Rule 1: Non-Zero Targets
+  non_zero_targets:
+    enabled: true
+    description: "Ensure all target values are non-zero and properly rounded"
+    severity: "error"
+    check_rounding: true
+    allow_zero: false
+
+  # Rule 2: Naming Convention
+  naming_convention:
+    enabled: true
+    description: "Check consistent naming convention (case consistency)"
+    severity: "warning"
+    check_case_consistency: true
+
+  # Rule 3: Boundary Alignment (between boundary and facility files)
+  boundary_alignment:
+    enabled: true
+    description: "Check boundary names match between boundary and facility files"
+    severity: "error"
+
+  # Rule 4: Unique Names
+  unique_names:
+    enabled: true
+    description: "Ensure names are unique under same parent"
+    severity: "error"
+    check_boundary_uniqueness: true
+    check_facility_uniqueness_per_parent: true
+
+  # Rule 5: User Mapping / Duplicate Contacts
+  user_mapping:
+    enabled: true
+    description: "Check for duplicate phone/contact numbers"
+    severity: "warning"
+    phone_number_pattern: "^\\+?[0-9]{8,15}$"
+
+  # Rule 6: No Missing Entries
+  no_missing_entries:
+    enabled: true
+    description: "Ensure no blank values in required fields"
+    severity: "error"
+
+  # Rule 7: Special Characters
+  special_characters:
+    enabled: true
+    description: "Flag unusual special characters in names"
+    severity: "warning"
+    allowed_special_chars:
+      - "-"
+      - "_"
+      - " "
+      - "'"
+      - "/"
+      - "."
+
+  # Rule 8: Hierarchy Check
+  hierarchy_check:
+    enabled: true
+    description: "Verify parent references exist in hierarchy"
+    severity: "error"
+    # Auto-detect root parents used by many rows
+    auto_detect_root: true
+    root_threshold_rows: 5
+    root_threshold_percent: 0.1
+
+# =============================================================================
+# SHEET CONFIGURATION - How to detect boundary vs facility sheets
+# =============================================================================
+sheet_config:
+  # For single Excel file with multiple sheets
+  single_file:
+    boundary_sheet_patterns:
+      - "boundary"
+      - "boundaries"
+      - "hierarchy"
+      - "unidades"
+      - "location"
+      - "admin"
+    facility_sheet_patterns:
+      - "facility"
+      - "facilities"
+      - "us"
+      - "deposito"
+      - "warehouse"
+      - "site"
+      - "distribution"
+
+  # For two separate files
+  two_file:
+    boundary_file_patterns:
+      - "boundary"
+      - "hierarchy"
+      - "location"
+    facility_file_patterns:
+      - "facility"
+      - "warehouse"
+      - "site"
+
+# =============================================================================
+# REPORT SETTINGS
+# =============================================================================
+report_settings:
+  output_format: "html"
+  include_summary: true
+  include_details: true
+  highlight_errors: true
+  max_examples_per_rule: 10
