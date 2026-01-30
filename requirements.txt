@@ -1,0 +1,6 @@
+# Microplan Ingestion Validator - Dependencies
+pandas
+openpyxl
+xlrd
+pyyaml
+ipywidgets
