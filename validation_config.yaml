@@ -179,7 +179,7 @@ validation_rules:
   special_characters:
     enabled: true
     description: "Flag unusual special characters in names"
-    severity: "warning"
+    severity: "error"
     allowed_special_chars:
       - "-"
       - "_"

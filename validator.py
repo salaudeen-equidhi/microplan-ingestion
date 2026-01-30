@@ -457,9 +457,16 @@ class Validator:
             return []
 
         issues = []
-        check_cols = (self.find_name_cols(df, self.boundary_patterns) +
-                      self.find_name_cols(df, self.facility_patterns) +
-                      self.find_cols(df, self.target_patterns))
+        check_cols = set()
+        check_cols.update(self.find_name_cols(df, self.boundary_patterns))
+        check_cols.update(self.find_name_cols(df, self.facility_patterns))
+        check_cols.update(self.find_cols(df, self.target_patterns))
+
+        # Also check any column with 'name' in it (generic name columns)
+        for c in df.columns:
+            col_lower = str(c).lower()
+            if 'name' in col_lower and not any(ex in col_lower for ex in self.exclude_from_naming):
+                check_cols.add(c)
 
         for col in check_cols:
             nulls = df[col].isna() | (df[col].astype(str).str.strip() == '')
@@ -478,7 +485,7 @@ class Validator:
         return issues
 
     def check_special(self, df, sheet):
-        """Check for special characters in boundary names."""
+        """Check for special characters in boundary and facility names."""
         if not self.rules_enabled['special_characters']:
             return []
 
@@ -486,7 +493,17 @@ class Validator:
         pattern = f'[^a-zA-Z0-9{re.escape("".join(self.special_allowed))}]'
         cnt = 0
 
-        name_cols = self.find_name_cols_for_naming(df, self.boundary_patterns)
+        # Check boundary columns, facility columns, AND generic name columns
+        name_cols = set()
+        name_cols.update(self.find_name_cols_for_naming(df, self.boundary_patterns))
+        name_cols.update(self.find_name_cols_for_naming(df, self.facility_patterns))
+
+        # Also check any column with 'name' in it (but not code/id columns)
+        for c in df.columns:
+            col_lower = str(c).lower()
+            if 'name' in col_lower and not any(ex in col_lower for ex in self.exclude_from_naming):
+                name_cols.add(c)
+
         for col in name_cols:
             for idx, val in df[col].items():
                 if pd.notna(val) and cnt < 20:
@@ -495,13 +512,14 @@ class Validator:
                     if chars:
                         issues.append({
                             'rule': 'Special Characters',
-                            'severity': 'warning',
+                            'severity': 'error',
                             'sheet': sheet,
                             'column': col,
                             'row': idx + 2,
                             'value': s[:40],
                             'message': f'Found: {list(set(chars))}'
                         })
+                        self.mark_row_error(sheet, idx, f'Special characters {list(set(chars))} in {col}')
                         cnt += 1
 
         return issues
