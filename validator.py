@@ -227,48 +227,56 @@ class Validator:
         return issues
 
     def check_alignment(self, b_df, f_df, b_sheet, f_sheet):
-        """Check boundary entries alignment between boundary and facility lists."""
+        """Check that facility boundary_code exists in boundary file's code column."""
         if not self.rules_enabled['boundary_alignment']:
             return []
 
         issues = []
 
-        # Get boundary NAMES from boundary file (exclude code/ID columns)
-        b_names = set()
-        for c in self.find_name_cols_for_naming(b_df, self.boundary_patterns):
-            b_names.update(b_df[c].dropna().astype(str).str.strip().unique())
+        # Find code column in boundary file (first column or column with 'code' in name)
+        b_code_col = None
+        for c in b_df.columns:
+            if 'code' in str(c).lower() and 'parent' not in str(c).lower():
+                b_code_col = c
+                break
+        if not b_code_col and len(b_df.columns) > 0:
+            b_code_col = b_df.columns[0]
 
-        # Get boundary NAMES from facility file (exclude code/ID columns)
-        f_names = set()
-        for c in self.find_name_cols_for_naming(f_df, self.boundary_patterns):
-            f_names.update(f_df[c].dropna().astype(str).str.strip().unique())
+        # Find boundary_code column in facility file
+        f_code_col = None
+        for c in f_df.columns:
+            col_lower = str(c).lower()
+            if 'boundary' in col_lower and 'code' in col_lower:
+                f_code_col = c
+                break
+        # Fallback: look for any column with 'boundary' in it
+        if not f_code_col:
+            for c in f_df.columns:
+                if 'boundary' in str(c).lower():
+                    f_code_col = c
+                    break
 
-        # Only run alignment if we found name columns in both files
-        if not b_names or not f_names:
+        if not b_code_col or not f_code_col:
             return issues
 
-        # Check for mismatches
-        for n in list(b_names - f_names)[:10]:
-            issues.append({
-                'rule': 'Boundary Alignment',
-                'severity': 'error',
-                'sheet': b_sheet,
-                'column': '-',
-                'row': '-',
-                'value': n[:40],
-                'message': 'Not in facility list'
-            })
+        # Get all valid boundary codes
+        valid_codes = set(b_df[b_code_col].dropna().astype(str).str.strip().unique())
 
-        for n in list(f_names - b_names)[:10]:
-            issues.append({
-                'rule': 'Boundary Alignment',
-                'severity': 'error',
-                'sheet': f_sheet,
-                'column': '-',
-                'row': '-',
-                'value': n[:40],
-                'message': 'Not in boundary list'
-            })
+        # Check each facility's boundary_code exists in boundary file
+        for idx, val in f_df[f_code_col].items():
+            if pd.notna(val):
+                code_str = str(val).strip()
+                if code_str and code_str not in valid_codes:
+                    issues.append({
+                        'rule': 'Boundary Alignment',
+                        'severity': 'error',
+                        'sheet': f_sheet,
+                        'column': f_code_col,
+                        'row': idx + 2,
+                        'value': code_str[:40],
+                        'message': f'Boundary code not found in {b_sheet}'
+                    })
+                    self.mark_row_error(f_sheet, idx, f'Invalid boundary_code: {code_str}')
 
         return issues
 
