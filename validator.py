@@ -47,6 +47,7 @@ class Validator:
         self.row_status = {}
         self.file_data = {}
         self.output_files = []
+        self.alignment_mapping = {}  # Facility column -> Boundary column mapping
 
     def _load_config(self, config_path):
         """Load configuration from YAML file."""
@@ -106,6 +107,16 @@ class Validator:
         self.target_columns = target_cols or []
         self.user_columns = user_cols or []
         self.num_targets = num_targets
+
+    def set_alignment_mapping(self, facility_to_boundary_map):
+        """
+        Set column mapping for alignment check between facility and boundary files.
+
+        Args:
+            facility_to_boundary_map: Dict mapping facility columns to boundary columns
+                e.g., {'Facility Name': 'Unidade Sanitaria', 'District': 'Distrito', 'State': 'Provincia'}
+        """
+        self.alignment_mapping = facility_to_boundary_map or {}
 
     def set_boundary_columns(self, columns):
         """Set boundary/hierarchy level column names."""
@@ -253,56 +264,59 @@ class Validator:
         return issues
 
     def check_alignment(self, b_df, f_df, b_sheet, f_sheet):
-        """Check that facility boundary_code exists in boundary file's code column."""
+        """Check that facility data exists in boundary file using column mapping."""
         if not self.rules_enabled['boundary_alignment']:
             return []
 
         issues = []
 
-        # Find code column in boundary file (first column or column with 'code' in name)
-        b_code_col = None
-        for c in b_df.columns:
-            if 'code' in str(c).lower() and 'parent' not in str(c).lower():
-                b_code_col = c
-                break
-        if not b_code_col and len(b_df.columns) > 0:
-            b_code_col = b_df.columns[0]
-
-        # Find boundary_code column in facility file
-        f_code_col = None
-        for c in f_df.columns:
-            col_lower = str(c).lower()
-            if 'boundary' in col_lower and 'code' in col_lower:
-                f_code_col = c
-                break
-        # Fallback: look for any column with 'boundary' in it
-        if not f_code_col:
-            for c in f_df.columns:
-                if 'boundary' in str(c).lower():
-                    f_code_col = c
-                    break
-
-        if not b_code_col or not f_code_col:
+        # If no mapping configured, skip alignment check
+        if not self.alignment_mapping:
             return issues
 
-        # Get all valid boundary codes
-        valid_codes = set(b_df[b_code_col].dropna().astype(str).str.strip().unique())
+        # Build lookup of valid values for each boundary column (case-insensitive)
+        b_cols_lower = {str(c).lower(): c for c in b_df.columns}
+        f_cols_lower = {str(c).lower(): c for c in f_df.columns}
 
-        # Check each facility's boundary_code exists in boundary file
-        for idx, val in f_df[f_code_col].items():
-            if pd.notna(val):
-                code_str = str(val).strip()
-                if code_str and code_str not in valid_codes:
-                    issues.append({
-                        'rule': 'Boundary Alignment',
-                        'severity': 'error',
-                        'sheet': f_sheet,
-                        'column': f_code_col,
-                        'row': idx + 2,
-                        'value': code_str[:40],
-                        'message': f'Boundary code not found in {b_sheet}'
-                    })
-                    self.mark_row_error(f_sheet, idx, f'Invalid boundary_code: {code_str}')
+        valid_values = {}  # boundary_col -> set of valid values
+        col_mapping = {}   # actual facility_col -> actual boundary_col
+
+        for f_col, b_col in self.alignment_mapping.items():
+            f_col_lower = str(f_col).lower()
+            b_col_lower = str(b_col).lower()
+
+            # Find actual column names (case-insensitive)
+            actual_f_col = f_cols_lower.get(f_col_lower)
+            actual_b_col = b_cols_lower.get(b_col_lower)
+
+            if actual_f_col and actual_b_col:
+                col_mapping[actual_f_col] = actual_b_col
+                # Get all valid values from boundary file (lowercase for comparison)
+                valid_values[actual_b_col] = set(
+                    b_df[actual_b_col].dropna().astype(str).str.strip().str.lower().unique()
+                )
+
+        if not col_mapping:
+            return issues
+
+        # Check each row in facility file
+        for idx in f_df.index:
+            for f_col, b_col in col_mapping.items():
+                val = f_df.loc[idx, f_col]
+                if pd.notna(val):
+                    val_str = str(val).strip()
+                    val_lower = val_str.lower()
+                    if val_str and val_lower not in valid_values[b_col]:
+                        issues.append({
+                            'rule': 'Boundary Alignment',
+                            'severity': 'error',
+                            'sheet': f_sheet,
+                            'column': f_col,
+                            'row': idx + 2,
+                            'value': val_str[:40],
+                            'message': f'"{val_str}" not found in {b_col} column of boundary file'
+                        })
+                        self.mark_row_error(f_sheet, idx, f'{f_col} "{val_str}" not in boundary')
 
         return issues
 
@@ -747,3 +761,4 @@ class Validator:
         self.row_status = {}
         self.file_data = {}
         self.output_files = []
+        self.alignment_mapping = {}
