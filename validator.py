@@ -1,4 +1,3 @@
-# validator.py - Microplan Excel/CSV Validation Engine
 import os
 import re
 import pandas as pd
@@ -6,27 +5,22 @@ import yaml
 from datetime import datetime
 from collections import defaultdict
 from openpyxl.styles import PatternFill, Font, Alignment
-from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 class Validator:
     """Validates microplan Excel/CSV files for data quality issues."""
 
     def __init__(self, config_path='validation_config.yaml'):
-        # Load configuration from YAML
         self.config = self._load_config(config_path)
 
-        # User-specified columns (set via set_columns method)
-        self.boundary_columns = []  # List of level/hierarchy column names
-        self.facility_columns = []  # List of facility column names
-        self.target_columns = []    # List of target column names
-        self.user_columns = []      # List of user/contact column names
-        self.num_targets = 0        # Number of target columns
+        self.boundary_columns = []
+        self.facility_columns = []
+        self.target_columns = []
+        self.user_columns = []
+        self.num_targets = 0
 
-        # Special characters allowed (from config)
         self.special_allowed = self._get_config_list(['validation_rules', 'special_characters', 'allowed_special_chars'])
 
-        # Validation rules toggle (from config)
         self.rules_enabled = {
             'non_zero_targets': self._get_config_bool(['validation_rules', 'non_zero_targets', 'enabled']),
             'naming_convention': self._get_config_bool(['validation_rules', 'naming_convention', 'enabled']),
@@ -38,29 +32,36 @@ class Validator:
             'hierarchy_check': self._get_config_bool(['validation_rules', 'hierarchy_check', 'enabled'])
         }
 
-        # Hierarchy check settings (from config)
+        self.rules_severity = {
+            'non_zero_targets': self._get_config_value(['validation_rules', 'non_zero_targets', 'severity'], 'error'),
+            'naming_convention': self._get_config_value(['validation_rules', 'naming_convention', 'severity'], 'warning'),
+            'boundary_alignment': self._get_config_value(['validation_rules', 'boundary_alignment', 'severity'], 'error'),
+            'unique_names': self._get_config_value(['validation_rules', 'unique_names', 'severity'], 'error'),
+            'user_mapping': self._get_config_value(['validation_rules', 'user_mapping', 'severity'], 'warning'),
+            'no_missing_entries': self._get_config_value(['validation_rules', 'no_missing_entries', 'severity'], 'error'),
+            'special_characters': self._get_config_value(['validation_rules', 'special_characters', 'severity'], 'error'),
+            'hierarchy_check': self._get_config_value(['validation_rules', 'hierarchy_check', 'severity'], 'error')
+        }
+
         self.hierarchy_auto_detect_root = self._get_config_bool(['validation_rules', 'hierarchy_check', 'auto_detect_root'])
         self.hierarchy_root_threshold_rows = self._get_config_value(['validation_rules', 'hierarchy_check', 'root_threshold_rows'], 5)
         self.hierarchy_root_threshold_percent = self._get_config_value(['validation_rules', 'hierarchy_check', 'root_threshold_percent'], 0.1)
 
-        # ==================== STATE ====================
         self.row_status = {}
         self.file_data = {}
         self.output_files = []
-        self.alignment_mapping = {}  # Facility column -> Boundary column mapping
+        self.alignment_mapping = {}
 
     def _load_config(self, config_path):
-        """Load configuration from YAML file."""
         try:
             if os.path.exists(config_path):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     return yaml.safe_load(f)
         except Exception as e:
-            print(f"Warning: Could not load config file '{config_path}': {e}")
+            print(f"Warning: Could not load config '{config_path}': {e}")
         return {}
 
     def _get_config_list(self, keys):
-        """Get a list value from config."""
         try:
             value = self.config
             for key in keys:
@@ -70,17 +71,15 @@ class Validator:
             return []
 
     def _get_config_bool(self, keys):
-        """Get a boolean value from config."""
         try:
             value = self.config
             for key in keys:
                 value = value[key]
             return bool(value)
         except (KeyError, TypeError):
-            return True  # Default enabled
+            return False
 
     def _get_config_value(self, keys, default=None):
-        """Get any value from config."""
         try:
             value = self.config
             for key in keys:
@@ -89,57 +88,18 @@ class Validator:
         except (KeyError, TypeError):
             return default
 
-    # ==================== COLUMN CONFIGURATION ====================
-
     def set_columns(self, boundary_cols=None, facility_cols=None, target_cols=None, user_cols=None, num_targets=0):
-        """
-        Set the column names explicitly from user input.
-
-        Args:
-            boundary_cols: List of boundary/hierarchy level column names (e.g., ['Province', 'District', 'Locality'])
-            facility_cols: List of facility column names (e.g., ['Facility Name'])
-            target_cols: List of target column names (e.g., ['target_1', 'target_2'])
-            user_cols: List of user/contact column names (e.g., ['Phone', 'Contact'])
-            num_targets: Number of target columns to validate
-        """
         self.boundary_columns = boundary_cols or []
         self.facility_columns = facility_cols or []
         self.target_columns = target_cols or []
         self.user_columns = user_cols or []
         self.num_targets = num_targets
 
-    def set_alignment_mapping(self, facility_to_boundary_map):
-        """
-        Set column mapping for alignment check between facility and boundary files.
-
-        Args:
-            facility_to_boundary_map: Dict mapping facility columns to boundary columns
-                e.g., {'Facility Name': 'Unidade Sanitaria', 'District': 'Distrito', 'State': 'Provincia'}
-        """
-        self.alignment_mapping = facility_to_boundary_map or {}
-
-    def set_boundary_columns(self, columns):
-        """Set boundary/hierarchy level column names."""
-        self.boundary_columns = columns if columns else []
-
-    def set_facility_columns(self, columns):
-        """Set facility column names."""
-        self.facility_columns = columns if columns else []
-
-    def set_target_columns(self, columns, num_targets=None):
-        """Set target column names."""
-        self.target_columns = columns if columns else []
-        if num_targets is not None:
-            self.num_targets = num_targets
-
-    def set_user_columns(self, columns):
-        """Set user/contact column names."""
-        self.user_columns = columns if columns else []
-
-    # ==================== HELPER METHODS ====================
+    def set_alignment_mapping(self, mapping):
+        self.alignment_mapping = mapping or {}
 
     def find_cols(self, df, col_list):
-        """Find columns from df that exist in col_list (exact match, case-insensitive)."""
+        """Find columns from dataframe that match the given list (case-insensitive)."""
         df_cols_lower = {str(c).lower(): c for c in df.columns}
         found = []
         for col in col_list:
@@ -148,42 +108,27 @@ class Validator:
                 found.append(df_cols_lower[col_lower])
         return found
 
-    def find_name_cols(self, df, col_list):
-        """Find columns matching col_list (case-insensitive)."""
-        return self.find_cols(df, col_list)
-
-    def find_name_cols_for_naming(self, df, col_list):
-        """Find columns for naming convention check (case-insensitive)."""
-        return self.find_cols(df, col_list)
-
     def find_parent_col(self, df):
-        """Find the parent column (parent_code, parent_id, parent, etc.)."""
         for c in df.columns:
-            col_lower = str(c).lower()
-            if 'parent' in col_lower:
+            if 'parent' in str(c).lower():
                 return c
         return None
 
     def is_csv(self, filepath):
-        """Check if file is CSV."""
         return filepath.lower().endswith('.csv')
 
     def init_row_status(self, df, sheet):
-        """Initialize row status tracking."""
         self.row_status[sheet] = {}
         for idx in df.index:
             self.row_status[sheet][idx] = {'status': 'PASS', 'errors': []}
 
     def mark_row_error(self, sheet, row, error_msg):
-        """Mark a row as having an error."""
         if sheet in self.row_status and row in self.row_status[sheet]:
             self.row_status[sheet][row]['status'] = 'FAIL'
             self.row_status[sheet][row]['errors'].append(error_msg)
 
-    # ==================== VALIDATION CHECKS ====================
-
     def check_non_zero(self, df, sheet):
-        """Check that target values are non-zero and properly rounded."""
+        """Validate target values are non-zero and rounded."""
         if not self.rules_enabled['non_zero_targets']:
             return []
 
@@ -196,24 +141,16 @@ class Validator:
                     try:
                         n = float(val)
                         if n == 0:
+                            sev = self.rules_severity['non_zero_targets']
                             issues.append({
-                                'rule': 'Non-Zero Targets',
-                                'severity': 'error',
-                                'sheet': sheet,
-                                'column': col,
-                                'row': idx + 2,
-                                'value': val,
-                                'message': 'Zero value'
+                                'rule': 'Non-Zero Targets', 'severity': sev, 'sheet': sheet,
+                                'column': col, 'row': idx + 2, 'value': val, 'message': 'Zero value'
                             })
-                            self.mark_row_error(sheet, idx, f'Zero value in {col}')
+                            if sev == 'error': self.mark_row_error(sheet, idx, f'Zero value in {col}')
                         elif n != round(n):
                             issues.append({
-                                'rule': 'Non-Zero Targets',
-                                'severity': 'warning',
-                                'sheet': sheet,
-                                'column': col,
-                                'row': idx + 2,
-                                'value': val,
+                                'rule': 'Non-Zero Targets', 'severity': 'warning', 'sheet': sheet,
+                                'column': col, 'row': idx + 2, 'value': val,
                                 'message': f'Not rounded (should be {round(n)})'
                             })
                     except:
@@ -221,198 +158,139 @@ class Validator:
         return issues
 
     def check_naming(self, df, sheet):
-        """Check naming convention - only for NAME columns, NOT code/ID columns."""
+        """Check for consistent naming convention across name columns."""
         if not self.rules_enabled['naming_convention']:
             return []
 
         issues = []
-
-        # Get name columns (excluding codes/IDs)
-        name_cols = (self.find_name_cols_for_naming(df, self.boundary_columns) +
-                     self.find_name_cols_for_naming(df, self.facility_columns))
-
-        names = [(c, i, str(v).strip()) for c in name_cols
-                 for i, v in df[c].items() if pd.notna(v)]
+        name_cols = self.find_cols(df, self.boundary_columns) + self.find_cols(df, self.facility_columns)
+        names = [(c, i, str(v).strip()) for c in name_cols for i, v in df[c].items() if pd.notna(v)]
 
         if names:
             cases = {'upper': 0, 'lower': 0, 'title': 0, 'mixed': 0}
             for _, _, n in names:
-                if n.isupper():
-                    cases['upper'] += 1
-                elif n.islower():
-                    cases['lower'] += 1
-                elif n.istitle():
-                    cases['title'] += 1
-                else:
-                    cases['mixed'] += 1
+                if n.isupper(): cases['upper'] += 1
+                elif n.islower(): cases['lower'] += 1
+                elif n.istitle(): cases['title'] += 1
+                else: cases['mixed'] += 1
 
-            dom = max(cases, key=cases.get)
+            dominant = max(cases, key=cases.get)
             cnt = 0
+            sev = self.rules_severity['naming_convention']
             for c, i, n in names:
                 if not (n.isupper() or n.islower() or n.istitle()) and cnt < 10:
                     issues.append({
-                        'rule': 'Naming Convention',
-                        'severity': 'warning',
-                        'sheet': sheet,
-                        'column': c,
-                        'row': i + 2,
-                        'value': n[:40],
-                        'message': f'Inconsistent case (dominant: {dom})'
+                        'rule': 'Naming Convention', 'severity': sev, 'sheet': sheet,
+                        'column': c, 'row': i + 2, 'value': n[:40],
+                        'message': f'Inconsistent case (dominant: {dominant})'
                     })
                     cnt += 1
-
         return issues
 
     def check_alignment(self, b_df, f_df, b_sheet, f_sheet):
-        """Check that facility data exists in boundary file using column mapping."""
-        if not self.rules_enabled['boundary_alignment']:
+        """Check that facility data exists in boundary file."""
+        if not self.rules_enabled['boundary_alignment'] or not self.alignment_mapping:
             return []
 
         issues = []
-
-        # If no mapping configured, skip alignment check
-        if not self.alignment_mapping:
-            return issues
-
-        # Build lookup of valid values for each boundary column (case-insensitive)
         b_cols_lower = {str(c).lower(): c for c in b_df.columns}
         f_cols_lower = {str(c).lower(): c for c in f_df.columns}
 
-        valid_values = {}  # boundary_col -> set of valid values
-        col_mapping = {}   # actual facility_col -> actual boundary_col
+        valid_values = {}
+        col_mapping = {}
 
         for f_col, b_col in self.alignment_mapping.items():
-            f_col_lower = str(f_col).lower()
-            b_col_lower = str(b_col).lower()
-
-            # Find actual column names (case-insensitive)
-            actual_f_col = f_cols_lower.get(f_col_lower)
-            actual_b_col = b_cols_lower.get(b_col_lower)
+            actual_f_col = f_cols_lower.get(str(f_col).lower())
+            actual_b_col = b_cols_lower.get(str(b_col).lower())
 
             if actual_f_col and actual_b_col:
                 col_mapping[actual_f_col] = actual_b_col
-                # Get all valid values from boundary file (lowercase for comparison)
                 valid_values[actual_b_col] = set(
                     b_df[actual_b_col].dropna().astype(str).str.strip().str.lower().unique()
                 )
 
-        if not col_mapping:
-            return issues
-
-        # Check each row in facility file
+        sev = self.rules_severity['boundary_alignment']
         for idx in f_df.index:
             for f_col, b_col in col_mapping.items():
                 val = f_df.loc[idx, f_col]
                 if pd.notna(val):
                     val_str = str(val).strip()
-                    val_lower = val_str.lower()
-                    if val_str and val_lower not in valid_values[b_col]:
+                    if val_str and val_str.lower() not in valid_values[b_col]:
                         issues.append({
-                            'rule': 'Boundary Alignment',
-                            'severity': 'error',
-                            'sheet': f_sheet,
-                            'column': f_col,
-                            'row': idx + 2,
-                            'value': val_str[:40],
-                            'message': f'"{val_str}" not found in {b_col} column of boundary file'
+                            'rule': 'Boundary Alignment', 'severity': sev, 'sheet': f_sheet,
+                            'column': f_col, 'row': idx + 2, 'value': val_str[:40],
+                            'message': f'"{val_str}" not found in {b_col}'
                         })
-                        self.mark_row_error(f_sheet, idx, f'{f_col} "{val_str}" not in boundary')
-
+                        if sev == 'error': self.mark_row_error(f_sheet, idx, f'{f_col} "{val_str}" not in boundary')
         return issues
 
     def check_unique(self, df, sheet):
-        """Check for duplicate names in the LAST boundary column under same parent hierarchy."""
+        """Check for duplicate names under same parent hierarchy."""
         if not self.rules_enabled['unique_names']:
             return []
 
         issues = []
+        sev = self.rules_severity['unique_names']
+        boundary_cols = self.find_cols(df, self.boundary_columns)
+        facility_cols = self.find_cols(df, self.facility_columns)
 
-        # Get columns
-        boundary_cols = self.find_name_cols(df, self.boundary_columns)
-        facility_cols = self.find_name_cols(df, self.facility_columns)
+        if boundary_cols:
+            last_col = boundary_cols[-1]
+            parent_cols = boundary_cols[:-1]
 
-        # Only check the LAST boundary column for duplicates
-        # (Higher levels like Country, Province naturally repeat - that's normal hierarchical data)
-        if len(boundary_cols) > 0:
-            last_col = boundary_cols[-1]  # e.g., "Aldeia"
-            parent_cols = boundary_cols[:-1]  # e.g., ["COUNTRY", "Provincia", "Distrito", ...]
-
-            if len(parent_cols) > 0:
+            if parent_cols:
                 try:
-                    # Create parent key from all parent columns
                     df['_parent_key'] = df[parent_cols].astype(str).agg('|'.join, axis=1)
-                    grouped = df.groupby('_parent_key')[last_col]
-
-                    for parent_key, group in grouped:
+                    for parent_key, group in df.groupby('_parent_key')[last_col]:
                         vals = group.dropna().astype(str).str.strip()
                         seen = {}
                         for idx, val in vals.items():
                             if val in seen:
-                                # Get human-readable parent path
                                 parent_display = ' > '.join([str(df.loc[idx, c]) for c in parent_cols])
                                 issues.append({
-                                    'rule': 'Unique Names',
-                                    'severity': 'error',
-                                    'sheet': sheet,
-                                    'column': last_col,
-                                    'row': idx + 2,
-                                    'value': val[:40],
+                                    'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
+                                    'column': last_col, 'row': idx + 2, 'value': val[:40],
                                     'message': f'Duplicate under "{parent_display}" (also row {seen[val] + 2})'
                                 })
-                                self.mark_row_error(sheet, idx, f'Duplicate {last_col} "{val}"')
+                                if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate {last_col} "{val}"')
                             else:
                                 seen[val] = idx
-
-                    # Clean up temp column
                     df.drop('_parent_key', axis=1, inplace=True, errors='ignore')
-                except Exception:
+                except:
                     pass
             else:
-                # Only one boundary column - check global uniqueness
                 vals = df[last_col].dropna().astype(str).str.strip()
                 seen = {}
                 for idx, val in vals.items():
                     if val in seen:
                         issues.append({
-                            'rule': 'Unique Names',
-                            'severity': 'error',
-                            'sheet': sheet,
-                            'column': last_col,
-                            'row': idx + 2,
-                            'value': val[:40],
-                            'message': f'Duplicate (also in row {seen[val] + 2})'
+                            'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
+                            'column': last_col, 'row': idx + 2, 'value': val[:40],
+                            'message': f'Duplicate (also row {seen[val] + 2})'
                         })
-                        self.mark_row_error(sheet, idx, f'Duplicate {last_col}: {val}')
+                        if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate {last_col}: {val}')
                     else:
                         seen[val] = idx
 
-        # Check facility columns - unique under last boundary
         for fac_col in facility_cols:
             group_col = boundary_cols[-1] if boundary_cols else None
-
             if group_col and group_col in df.columns:
                 try:
-                    grouped = df.groupby(group_col)[fac_col]
-                    for parent_val, group in grouped:
+                    for parent_val, group in df.groupby(group_col)[fac_col]:
                         vals = group.dropna().astype(str).str.strip()
                         seen = {}
                         for idx, val in vals.items():
                             if val in seen:
                                 issues.append({
-                                    'rule': 'Unique Names',
-                                    'severity': 'error',
-                                    'sheet': sheet,
-                                    'column': fac_col,
-                                    'row': idx + 2,
-                                    'value': val[:40],
+                                    'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
+                                    'column': fac_col, 'row': idx + 2, 'value': val[:40],
                                     'message': f'Duplicate facility under "{parent_val}" (also row {seen[val] + 2})'
                                 })
-                                self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
+                                if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
                             else:
                                 seen[val] = idx
-                except Exception:
+                except:
                     pass
-
         return issues
 
     def check_users(self, df, sheet):
@@ -421,6 +299,7 @@ class Validator:
             return []
 
         issues = []
+        sev = self.rules_severity['user_mapping']
         phone_cols = [c for c in self.find_cols(df, self.user_columns)
                       if any(p in str(c).lower() for p in ['mobile', 'phone', 'contact'])]
 
@@ -429,62 +308,52 @@ class Validator:
                 vals = df[col].dropna().astype(str).str.replace(r'[\s\-\(\)]', '', regex=True)
                 seen = {}
                 for idx, val in vals.items():
-                    if val and val != '':
+                    if val:
                         if val in seen:
                             issues.append({
-                                'rule': 'User Mapping',
-                                'severity': 'warning',
-                                'sheet': sheet,
-                                'column': col,
-                                'row': idx + 2,
-                                'value': val,
+                                'rule': 'User Mapping', 'severity': sev, 'sheet': sheet,
+                                'column': col, 'row': idx + 2, 'value': val,
                                 'message': f'Duplicate contact (also row {seen[val] + 2})'
                             })
                         else:
                             seen[val] = idx
-
         return issues
 
     def check_missing(self, df, sheet):
-        """Check for missing/blank values in required fields."""
+        """Check for blank values in required fields."""
         if not self.rules_enabled['no_missing_entries']:
             return []
 
         issues = []
+        sev = self.rules_severity['no_missing_entries']
         check_cols = set()
-        check_cols.update(self.find_name_cols(df, self.boundary_columns))
-        check_cols.update(self.find_name_cols(df, self.facility_columns))
+        check_cols.update(self.find_cols(df, self.boundary_columns))
+        check_cols.update(self.find_cols(df, self.facility_columns))
         check_cols.update(self.find_cols(df, self.target_columns))
 
         for col in check_cols:
             nulls = df[col].isna() | (df[col].astype(str).str.strip() == '')
             for idx in df[nulls].index:
                 issues.append({
-                    'rule': 'No Missing Entries',
-                    'severity': 'error',
-                    'sheet': sheet,
-                    'column': col,
-                    'row': idx + 2,
-                    'value': 'BLANK',
-                    'message': 'Missing value'
+                    'rule': 'No Missing Entries', 'severity': sev, 'sheet': sheet,
+                    'column': col, 'row': idx + 2, 'value': 'BLANK', 'message': 'Missing value'
                 })
-                self.mark_row_error(sheet, idx, f'Missing value in {col}')
-
+                if sev == 'error': self.mark_row_error(sheet, idx, f'Missing value in {col}')
         return issues
 
     def check_special(self, df, sheet):
-        """Check for special characters in boundary and facility names."""
+        """Check for unusual special characters in names."""
         if not self.rules_enabled['special_characters']:
             return []
 
         issues = []
+        sev = self.rules_severity['special_characters']
         pattern = f'[^a-zA-Z0-9{re.escape("".join(self.special_allowed))}]'
         cnt = 0
 
-        # Check boundary columns and facility columns
         name_cols = set()
-        name_cols.update(self.find_name_cols_for_naming(df, self.boundary_columns))
-        name_cols.update(self.find_name_cols_for_naming(df, self.facility_columns))
+        name_cols.update(self.find_cols(df, self.boundary_columns))
+        name_cols.update(self.find_cols(df, self.facility_columns))
 
         for col in name_cols:
             for idx, val in df[col].items():
@@ -493,21 +362,16 @@ class Validator:
                     chars = re.findall(pattern, s)
                     if chars:
                         issues.append({
-                            'rule': 'Special Characters',
-                            'severity': 'error',
-                            'sheet': sheet,
-                            'column': col,
-                            'row': idx + 2,
-                            'value': s[:40],
+                            'rule': 'Special Characters', 'severity': sev, 'sheet': sheet,
+                            'column': col, 'row': idx + 2, 'value': s[:40],
                             'message': f'Found: {list(set(chars))}'
                         })
-                        self.mark_row_error(sheet, idx, f'Special characters {list(set(chars))} in {col}')
+                        if sev == 'error': self.mark_row_error(sheet, idx, f'Special chars in {col}')
                         cnt += 1
-
         return issues
 
     def check_hierarchy(self, df, sheet):
-        """Check that parent references are valid (parent exists in hierarchy)."""
+        """Check that parent references exist in the data."""
         if not self.rules_enabled['hierarchy_check']:
             return []
 
@@ -515,70 +379,64 @@ class Validator:
         parent_col = self.find_parent_col(df)
 
         if not parent_col or parent_col not in df.columns:
-            return issues  # No parent column found, skip check
+            return issues
 
-        # Get all boundary name/code columns that could be parents
-        boundary_cols = self.find_name_cols(df, self.boundary_columns)
+        boundary_cols = self.find_cols(df, self.boundary_columns)
 
-        # Also check first column if it's a code column
         first_col = df.columns[0] if len(df.columns) > 0 else None
         code_col = None
-        if first_col:
-            first_col_lower = str(first_col).lower()
-            if any(p in first_col_lower for p in ['code', 'id', 'boundary', 'key']):
-                code_col = first_col
+        if first_col and any(p in str(first_col).lower() for p in ['code', 'id', 'boundary', 'key']):
+            code_col = first_col
 
-        # Collect all valid parent values (from boundary columns and code column)
         valid_parents = set()
-
         if code_col:
             valid_parents.update(df[code_col].dropna().astype(str).str.strip().unique())
-
         for col in boundary_cols:
             valid_parents.update(df[col].dropna().astype(str).str.strip().unique())
 
-        # Detect potential root parents dynamically:
-        # If a parent value is used by many rows but doesn't exist in boundary codes,
-        # it's likely the root/country level (e.g., "mz" for Mozambique)
         detected_roots = set()
         if self.hierarchy_auto_detect_root:
             parent_counts = df[parent_col].dropna().astype(str).str.strip().value_counts()
-            threshold_rows = self.hierarchy_root_threshold_rows
-            threshold_percent = self.hierarchy_root_threshold_percent
             for parent_val, count in parent_counts.items():
                 if parent_val not in valid_parents:
-                    # If this parent is used by many rows, treat as root
-                    if count > threshold_rows or count > len(df) * threshold_percent:
+                    if count > self.hierarchy_root_threshold_rows or count > len(df) * self.hierarchy_root_threshold_percent:
                         detected_roots.add(parent_val)
 
-        # Check each parent reference
+        sev = self.rules_severity['hierarchy_check']
         for idx, parent_val in df[parent_col].items():
             if pd.notna(parent_val):
                 parent_str = str(parent_val).strip()
-                if parent_str and parent_str not in valid_parents:
-                    # Skip if it's a detected root
-                    if parent_str in detected_roots:
-                        continue
-
+                if parent_str and parent_str not in valid_parents and parent_str not in detected_roots:
                     issues.append({
-                        'rule': 'Hierarchy Check',
-                        'severity': 'error',
-                        'sheet': sheet,
-                        'column': parent_col,
-                        'row': idx + 2,
-                        'value': parent_str[:40],
-                        'message': f'Parent "{parent_str}" not found in hierarchy'
+                        'rule': 'Hierarchy Check', 'severity': sev, 'sheet': sheet,
+                        'column': parent_col, 'row': idx + 2, 'value': parent_str[:40],
+                        'message': f'Parent "{parent_str}" not found'
                     })
-                    self.mark_row_error(sheet, idx, f'Invalid parent: {parent_str}')
-
+                    if sev == 'error': self.mark_row_error(sheet, idx, f'Invalid parent: {parent_str}')
         return issues
 
-    # ==================== MAIN VALIDATION METHODS ====================
+    def check_columns_exist(self, df, sheet):
+        """Check if configured columns exist in the dataframe."""
+        issues = []
+        df_cols_lower = {str(c).lower() for c in df.columns}
+
+        all_configured = (self.boundary_columns + self.facility_columns +
+                         self.target_columns + self.user_columns)
+
+        for col in all_configured:
+            if col and str(col).lower().strip() not in df_cols_lower:
+                issues.append({
+                    'rule': 'Column Not Found', 'severity': 'error', 'sheet': sheet,
+                    'column': col, 'row': '-', 'value': '-',
+                    'message': f'Column "{col}" not found. Available: {list(df.columns)[:5]}...'
+                })
+        return issues
 
     def validate_df(self, df, sheet):
         """Run all validation checks on a dataframe."""
         self.init_row_status(df, sheet)
         issues = []
+        issues.extend(self.check_columns_exist(df, sheet))
         issues.extend(self.check_non_zero(df, sheet))
         issues.extend(self.check_naming(df, sheet))
         issues.extend(self.check_unique(df, sheet))
@@ -589,22 +447,17 @@ class Validator:
         return issues
 
     def read_file(self, filepath):
-        """Read CSV or Excel file and return dict of {sheet_name: dataframe}."""
+        """Read Excel or CSV file into dict of dataframes."""
         if self.is_csv(filepath):
-            df = pd.read_csv(filepath)
-            fname = os.path.basename(filepath)
-            return {fname: df}
+            return {os.path.basename(filepath): pd.read_csv(filepath)}
         else:
             xls = pd.ExcelFile(filepath)
-            result = {}
-            for sheet in xls.sheet_names:
-                df = pd.read_excel(xls, sheet_name=sheet)
-                if not df.empty:
-                    result[sheet] = df
-            return result
+            return {sheet: pd.read_excel(xls, sheet_name=sheet)
+                    for sheet in xls.sheet_names
+                    if not pd.read_excel(xls, sheet_name=sheet).empty}
 
     def validate_file(self, filepath, b_sheet=None, f_sheet=None):
-        """Validate a single file and return issues."""
+        """Validate a file and return issues with summary."""
         issues = []
         b_df, f_df, b_name, f_name = None, None, None, None
 
@@ -622,7 +475,6 @@ class Validator:
                 label = f"{fname} - {sheet}" if not self.is_csv(filepath) else fname
                 issues.extend(self.validate_df(df, label))
 
-                # Add status columns
                 df_with_status = df.copy()
                 df_with_status['VALIDATION_STATUS'] = 'PASS'
                 df_with_status['VALIDATION_ERRORS'] = ''
@@ -635,32 +487,24 @@ class Validator:
 
                 self.file_data[filepath][sheet] = df_with_status
 
-                # Detect boundary/facility sheets
                 sl = sheet.lower()
                 if b_sheet and b_sheet.lower() == sl:
                     b_df, b_name = df, label
                 elif f_sheet and f_sheet.lower() == sl:
                     f_df, f_name = df, label
 
-            # Run alignment check if both sheets found
             if b_df is not None and f_df is not None:
                 issues.extend(self.check_alignment(b_df, f_df, b_name, f_name))
 
         except Exception as e:
             issues.append({
-                'rule': 'File Error',
-                'severity': 'error',
-                'sheet': filepath,
-                'column': '-',
-                'row': '-',
-                'value': '-',
-                'message': str(e)
+                'rule': 'File Error', 'severity': 'error', 'sheet': filepath,
+                'column': '-', 'row': '-', 'value': '-', 'message': str(e)
             })
 
         return issues, self.summarize(issues)
 
     def summarize(self, issues):
-        """Generate summary statistics from issues list."""
         summary = {
             'total': len(issues),
             'errors': len([i for i in issues if i['severity'] == 'error']),
@@ -672,65 +516,37 @@ class Validator:
         return summary
 
     def save_validated_files(self, output_folder='error'):
-        """Save validated files with status columns and colors to output folder."""
+        """Save validated files with color-coded status."""
         self.output_files = []
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        # Color definitions
-        green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')  # Light green
-        red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')    # Light red
-        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid') # Blue header
+        green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+        red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
         header_font = Font(bold=True, color='FFFFFF')
 
         for filepath, sheets_data in self.file_data.items():
             if not sheets_data:
                 continue
 
-            base_name = os.path.basename(filepath)
-            name_part = os.path.splitext(base_name)[0]
+            name_part = os.path.splitext(os.path.basename(filepath))[0]
+            output_path = os.path.join(output_folder, f"{name_part}_VALIDATED_{ts}.xlsx")
 
-            if self.is_csv(filepath):
-                # For CSV: Save as Excel with colors instead (better output)
-                output_name = f"{name_part}_VALIDATED_{ts}.xlsx"
-                output_path = os.path.join(output_folder, output_name)
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                for sheet_name, df in sheets_data.items():
+                    df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
 
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    for sheet_name, df in sheets_data.items():
-                        clean_name = sheet_name[:31] if len(sheet_name) > 31 else 'Sheet1'
-                        df.to_excel(writer, sheet_name=clean_name, index=False)
+                for sheet_name in writer.book.sheetnames:
+                    self._apply_colors(writer.book[sheet_name], header_fill, header_font, green_fill, red_fill)
 
-                    # Apply colors after writing
-                    workbook = writer.book
-                    for sheet_name in workbook.sheetnames:
-                        self._apply_colors(workbook[sheet_name], header_fill, header_font, green_fill, red_fill)
-
-                self.output_files.append(output_path)
-            else:
-                output_name = f"{name_part}_VALIDATED_{ts}.xlsx"
-                output_path = os.path.join(output_folder, output_name)
-
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    for sheet_name, df in sheets_data.items():
-                        clean_name = sheet_name[:31]
-                        df.to_excel(writer, sheet_name=clean_name, index=False)
-
-                    # Apply colors after writing
-                    workbook = writer.book
-                    for sheet_name in workbook.sheetnames:
-                        self._apply_colors(workbook[sheet_name], header_fill, header_font, green_fill, red_fill)
-
-                self.output_files.append(output_path)
-
+            self.output_files.append(output_path)
         return self.output_files
 
     def _apply_colors(self, ws, header_fill, header_font, green_fill, red_fill):
-        """Apply colors to VALIDATION_STATUS column only."""
-        # Find VALIDATION_STATUS column
         status_col = None
         for col_idx, cell in enumerate(ws[1], 1):
             if cell.value == 'VALIDATION_STATUS':
                 status_col = col_idx
-            # Style header row
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center')
@@ -738,26 +554,21 @@ class Validator:
         if not status_col:
             return
 
-        # Apply colors only to VALIDATION_STATUS cell
         for row_idx in range(2, ws.max_row + 1):
             status_cell = ws.cell(row=row_idx, column=status_col)
             if status_cell.value == 'PASS':
                 status_cell.fill = green_fill
-                status_cell.font = Font(bold=True, color='006100')  # Dark green text
+                status_cell.font = Font(bold=True, color='006100')
             elif status_cell.value == 'FAIL':
                 status_cell.fill = red_fill
-                status_cell.font = Font(bold=True, color='9C0006')  # Dark red text
+                status_cell.font = Font(bold=True, color='9C0006')
 
     def get_stats(self):
-        """Get pass/fail row statistics."""
-        pass_count = sum(1 for sheet_data in self.row_status.values()
-                         for row_data in sheet_data.values() if row_data['status'] == 'PASS')
-        fail_count = sum(1 for sheet_data in self.row_status.values()
-                         for row_data in sheet_data.values() if row_data['status'] == 'FAIL')
+        pass_count = sum(1 for sd in self.row_status.values() for rd in sd.values() if rd['status'] == 'PASS')
+        fail_count = sum(1 for sd in self.row_status.values() for rd in sd.values() if rd['status'] == 'FAIL')
         return pass_count, fail_count
 
     def reset(self):
-        """Reset validator state for new validation."""
         self.row_status = {}
         self.file_data = {}
         self.output_files = []

@@ -1,90 +1,36 @@
-# Excel Validation Configuration
-# This YAML file defines validation rules for microplan Excel files
-
-validation_settings:
-  upload_folder: "uploads"
-  error_folder: "error"
-  supported_extensions:
-    - ".xlsx"
-    - ".xls"
-    - ".csv"
-
-# =============================================================================
-# VALIDATION RULES - Enable/disable and configure each rule
-# =============================================================================
 validation_rules:
-
-  # Rule 1: Non-Zero Targets
   non_zero_targets:
     enabled: true
-    description: "Ensure all target values are non-zero and properly rounded"
     severity: "error"
-    check_rounding: true
-    allow_zero: false
 
-  # Rule 2: Naming Convention
   naming_convention:
     enabled: true
-    description: "Check consistent naming convention (case consistency)"
     severity: "warning"
-    check_case_consistency: true
 
-  # Rule 3: Boundary Alignment (between boundary and facility files)
   boundary_alignment:
     enabled: true
-    description: "Check boundary names match between boundary and facility files"
     severity: "error"
 
-  # Rule 4: Unique Names
   unique_names:
     enabled: true
-    description: "Ensure names are unique under same parent"
     severity: "error"
-    check_boundary_uniqueness: true
-    check_facility_uniqueness_per_parent: true
 
-  # Rule 5: User Mapping / Duplicate Contacts
   user_mapping:
     enabled: true
-    description: "Check for duplicate phone/contact numbers"
     severity: "warning"
-    phone_number_pattern: "^\\+?[0-9]{8,15}$"
 
-  # Rule 6: No Missing Entries
   no_missing_entries:
     enabled: true
-    description: "Ensure no blank values in required fields"
     severity: "error"
 
-  # Rule 7: Special Characters
   special_characters:
     enabled: true
-    description: "Flag unusual special characters in names"
     severity: "error"
-    allowed_special_chars:
-      - "-"
-      - "_"
-      - " "
-      - "'"
-      - "/"
-      - "."
+    allowed_special_chars: ["-", "_", " ", "'", "/", ".", "(", ")", "á", "à", "ã", "â", "é", "è", "ê", "í", "ì", "ó", "ò", "ô", "õ", "ú", "ù", "ç", "ñ"]
 
-  # Rule 8: Hierarchy Check
   hierarchy_check:
     enabled: true
-    description: "Verify parent references exist in hierarchy"
     severity: "error"
-    # Auto-detect root parents used by many rows
     auto_detect_root: true
     root_threshold_rows: 5
     root_threshold_percent: 0.1
-
-# =============================================================================
-# REPORT SETTINGS
-# =============================================================================
-report_settings:
-  output_format: "html"
-  include_summary: true
-  include_details: true
-  highlight_errors: true
-  max_examples_per_rule: 10
