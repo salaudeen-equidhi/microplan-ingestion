@@ -16,21 +16,18 @@ class Validator:
         # Load configuration from YAML
         self.config = self._load_config(config_path)
 
-        # Column patterns (from config)
-        self.boundary_patterns = self._get_config_list(['column_mappings', 'boundary_columns'])
-        self.facility_patterns = self._get_config_list(['column_mappings', 'facility_columns'])
-        self.target_patterns = self._get_config_list(['column_mappings', 'target_columns'])
-        self.user_patterns = self._get_config_list(['column_mappings', 'user_columns'])
+        # User-specified columns (set via set_columns method)
+        self.boundary_columns = []  # List of level/hierarchy column names
+        self.facility_columns = []  # List of facility column names
+        self.target_columns = []    # List of target column names
+        self.user_columns = []      # List of user/contact column names
+        self.num_targets = 0        # Number of target columns
 
         # Exclude patterns (from config)
         self.exclude_patterns = self._get_config_list(['exclude_patterns', 'exclude_from_uniqueness'])
         self.exclude_from_naming = self._get_config_list(['exclude_patterns', 'exclude_from_naming'])
         self.root_indicators = self._get_config_list(['exclude_patterns', 'root_indicators'])
         self.special_allowed = self._get_config_list(['validation_rules', 'special_characters', 'allowed_special_chars'])
-
-        # Sheet detection patterns (from config)
-        self.boundary_sheet_patterns = self._get_config_list(['sheet_config', 'single_file', 'boundary_sheet_patterns'])
-        self.facility_sheet_patterns = self._get_config_list(['sheet_config', 'single_file', 'facility_sheet_patterns'])
 
         # Validation rules toggle (from config)
         self.rules_enabled = {
@@ -94,31 +91,78 @@ class Validator:
         except (KeyError, TypeError):
             return default
 
+    # ==================== COLUMN CONFIGURATION ====================
+
+    def set_columns(self, boundary_cols=None, facility_cols=None, target_cols=None, user_cols=None, num_targets=0):
+        """
+        Set the column names explicitly from user input.
+
+        Args:
+            boundary_cols: List of boundary/hierarchy level column names (e.g., ['Province', 'District', 'Locality'])
+            facility_cols: List of facility column names (e.g., ['Facility Name'])
+            target_cols: List of target column names (e.g., ['target_1', 'target_2'])
+            user_cols: List of user/contact column names (e.g., ['Phone', 'Contact'])
+            num_targets: Number of target columns to validate
+        """
+        self.boundary_columns = boundary_cols or []
+        self.facility_columns = facility_cols or []
+        self.target_columns = target_cols or []
+        self.user_columns = user_cols or []
+        self.num_targets = num_targets
+
+    def set_boundary_columns(self, columns):
+        """Set boundary/hierarchy level column names."""
+        self.boundary_columns = columns if columns else []
+
+    def set_facility_columns(self, columns):
+        """Set facility column names."""
+        self.facility_columns = columns if columns else []
+
+    def set_target_columns(self, columns, num_targets=None):
+        """Set target column names."""
+        self.target_columns = columns if columns else []
+        if num_targets is not None:
+            self.num_targets = num_targets
+
+    def set_user_columns(self, columns):
+        """Set user/contact column names."""
+        self.user_columns = columns if columns else []
+
     # ==================== HELPER METHODS ====================
 
-    def find_cols(self, df, patterns):
-        """Find columns matching any of the patterns."""
-        return [c for c in df.columns if any(p in str(c).lower() for p in patterns)]
+    def find_cols(self, df, col_list):
+        """Find columns from df that exist in col_list (exact match, case-insensitive)."""
+        df_cols_lower = {str(c).lower(): c for c in df.columns}
+        found = []
+        for col in col_list:
+            col_lower = str(col).lower().strip()
+            if col_lower in df_cols_lower:
+                found.append(df_cols_lower[col_lower])
+        return found
 
-    def find_name_cols(self, df, patterns):
-        """Find columns matching patterns but EXCLUDE type/level columns."""
+    def find_name_cols(self, df, col_list):
+        """Find columns matching col_list but EXCLUDE type/level columns."""
         cols = []
-        for c in df.columns:
-            col_lower = str(c).lower()
-            if any(p in col_lower for p in patterns):
+        df_cols_lower = {str(c).lower(): c for c in df.columns}
+        for col in col_list:
+            col_lower = str(col).lower().strip()
+            if col_lower in df_cols_lower:
+                actual_col = df_cols_lower[col_lower]
                 if not any(ex in col_lower for ex in self.exclude_patterns):
-                    cols.append(c)
+                    cols.append(actual_col)
         return cols
 
-    def find_name_cols_for_naming(self, df, patterns):
+    def find_name_cols_for_naming(self, df, col_list):
         """Find columns for naming convention check - EXCLUDE codes/IDs."""
         cols = []
-        for c in df.columns:
-            col_lower = str(c).lower()
-            if any(p in col_lower for p in patterns):
+        df_cols_lower = {str(c).lower(): c for c in df.columns}
+        for col in col_list:
+            col_lower = str(col).lower().strip()
+            if col_lower in df_cols_lower:
+                actual_col = df_cols_lower[col_lower]
                 if not any(ex in col_lower for ex in self.exclude_patterns):
                     if not any(ex in col_lower for ex in self.exclude_from_naming):
-                        cols.append(c)
+                        cols.append(actual_col)
         return cols
 
     def find_parent_col(self, df):
@@ -153,7 +197,9 @@ class Validator:
             return []
 
         issues = []
-        for col in self.find_cols(df, self.target_patterns):
+        target_cols = self.find_cols(df, self.target_columns)
+
+        for col in target_cols:
             for idx, val in df[col].items():
                 if pd.notna(val):
                     try:
@@ -191,8 +237,8 @@ class Validator:
         issues = []
 
         # Get name columns (excluding codes/IDs)
-        name_cols = (self.find_name_cols_for_naming(df, self.boundary_patterns) +
-                     self.find_name_cols_for_naming(df, self.facility_patterns))
+        name_cols = (self.find_name_cols_for_naming(df, self.boundary_columns) +
+                     self.find_name_cols_for_naming(df, self.facility_columns))
 
         names = [(c, i, str(v).strip()) for c in name_cols
                  for i, v in df[c].items() if pd.notna(v)]
@@ -281,110 +327,74 @@ class Validator:
         return issues
 
     def check_unique(self, df, sheet):
-        """Check for duplicate names in boundary and facility columns."""
+        """Check for duplicate names in the LAST boundary column under same parent hierarchy."""
         if not self.rules_enabled['unique_names']:
             return []
 
         issues = []
 
         # Get columns
-        boundary_cols = self.find_name_cols(df, self.boundary_patterns)
-        facility_cols = self.find_name_cols(df, self.facility_patterns)
-        parent_col = self.find_parent_col(df)
+        boundary_cols = self.find_name_cols(df, self.boundary_columns)
+        facility_cols = self.find_name_cols(df, self.facility_columns)
 
-        # Check first column for duplicates if it's a code/ID
-        first_col = df.columns[0] if len(df.columns) > 0 else None
-        if first_col is not None:
-            first_col_lower = str(first_col).lower()
-            if any(p in first_col_lower for p in ['code', 'id', 'boundary', 'key']):
-                vals = df[first_col].dropna().astype(str).str.strip()
-                seen = {}
-                for idx, val in vals.items():
-                    if val in seen:
-                        issues.append({
-                            'rule': 'Unique Names',
-                            'severity': 'error',
-                            'sheet': sheet,
-                            'column': first_col,
-                            'row': idx + 2,
-                            'value': val[:40],
-                            'message': f'Duplicate code/ID (also in row {seen[val] + 2})'
-                        })
-                        self.mark_row_error(sheet, idx, f'Duplicate {first_col}: {val}')
-                    else:
-                        seen[val] = idx
+        # Only check the LAST boundary column for duplicates
+        # (Higher levels like Country, Province naturally repeat - that's normal hierarchical data)
+        if len(boundary_cols) > 0:
+            last_col = boundary_cols[-1]  # e.g., "Aldeia"
+            parent_cols = boundary_cols[:-1]  # e.g., ["COUNTRY", "Provincia", "Distrito", ...]
 
-        # Check boundary columns
-        for i, col in enumerate(boundary_cols):
-            if parent_col and parent_col in df.columns:
-                # Use explicit parent column
+            if len(parent_cols) > 0:
                 try:
-                    grouped = df.groupby(parent_col)[col]
-                    for parent_val, group in grouped:
+                    # Create parent key from all parent columns
+                    df['_parent_key'] = df[parent_cols].astype(str).agg('|'.join, axis=1)
+                    grouped = df.groupby('_parent_key')[last_col]
+
+                    for parent_key, group in grouped:
                         vals = group.dropna().astype(str).str.strip()
                         seen = {}
                         for idx, val in vals.items():
                             if val in seen:
+                                # Get human-readable parent path
+                                parent_display = ' > '.join([str(df.loc[idx, c]) for c in parent_cols])
                                 issues.append({
                                     'rule': 'Unique Names',
                                     'severity': 'error',
                                     'sheet': sheet,
-                                    'column': col,
+                                    'column': last_col,
                                     'row': idx + 2,
                                     'value': val[:40],
-                                    'message': f'Duplicate under parent "{parent_val}" (also row {seen[val] + 2})'
+                                    'message': f'Duplicate under "{parent_display}" (also row {seen[val] + 2})'
                                 })
-                                self.mark_row_error(sheet, idx, f'Duplicate {col} "{val}" under parent "{parent_val}"')
+                                self.mark_row_error(sheet, idx, f'Duplicate {last_col} "{val}"')
                             else:
                                 seen[val] = idx
+
+                    # Clean up temp column
+                    df.drop('_parent_key', axis=1, inplace=True, errors='ignore')
                 except Exception:
                     pass
-            elif i == 0:
-                # First column - globally unique
-                vals = df[col].dropna().astype(str).str.strip()
-                seen = {}
-                for idx, val in vals.items():
-                    if val in seen:
-                        issues.append({
-                            'rule': 'Unique Names',
-                            'severity': 'error',
-                            'sheet': sheet,
-                            'column': col,
-                            'row': idx + 2,
-                            'value': val[:40],
-                            'message': f'Duplicate top-level boundary (also in row {seen[val] + 2})'
-                        })
-                        self.mark_row_error(sheet, idx, f'Duplicate {col}: {val}')
-                    else:
-                        seen[val] = idx
             else:
-                # Sub-level - use previous column as parent
-                prev_col = boundary_cols[i - 1]
-                try:
-                    grouped = df.groupby(prev_col)[col]
-                    for parent_val, group in grouped:
-                        vals = group.dropna().astype(str).str.strip()
-                        seen = {}
-                        for idx, val in vals.items():
-                            if val in seen:
-                                issues.append({
-                                    'rule': 'Unique Names',
-                                    'severity': 'error',
-                                    'sheet': sheet,
-                                    'column': col,
-                                    'row': idx + 2,
-                                    'value': val[:40],
-                                    'message': f'Duplicate under "{parent_val}" (also row {seen[val] + 2})'
-                                })
-                                self.mark_row_error(sheet, idx, f'Duplicate {col} "{val}" under {prev_col} "{parent_val}"')
-                            else:
-                                seen[val] = idx
-                except Exception:
-                    pass
+                # Only one boundary column - check global uniqueness
+                vals = df[last_col].dropna().astype(str).str.strip()
+                seen = {}
+                for idx, val in vals.items():
+                    if val in seen:
+                        issues.append({
+                            'rule': 'Unique Names',
+                            'severity': 'error',
+                            'sheet': sheet,
+                            'column': last_col,
+                            'row': idx + 2,
+                            'value': val[:40],
+                            'message': f'Duplicate (also in row {seen[val] + 2})'
+                        })
+                        self.mark_row_error(sheet, idx, f'Duplicate {last_col}: {val}')
+                    else:
+                        seen[val] = idx
 
-        # Check facility columns
+        # Check facility columns - unique under last boundary
         for fac_col in facility_cols:
-            group_col = parent_col if parent_col else (boundary_cols[-1] if boundary_cols else None)
+            group_col = boundary_cols[-1] if boundary_cols else None
 
             if group_col and group_col in df.columns:
                 try:
@@ -403,29 +413,11 @@ class Validator:
                                     'value': val[:40],
                                     'message': f'Duplicate facility under "{parent_val}" (also row {seen[val] + 2})'
                                 })
-                                self.mark_row_error(sheet, idx, f'Duplicate facility "{val}" under "{parent_val}"')
+                                self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
                             else:
                                 seen[val] = idx
                 except Exception:
                     pass
-            else:
-                # Global uniqueness
-                vals = df[fac_col].dropna().astype(str).str.strip()
-                seen = {}
-                for idx, val in vals.items():
-                    if val in seen:
-                        issues.append({
-                            'rule': 'Unique Names',
-                            'severity': 'error',
-                            'sheet': sheet,
-                            'column': fac_col,
-                            'row': idx + 2,
-                            'value': val[:40],
-                            'message': f'Duplicate facility name (also in row {seen[val] + 2})'
-                        })
-                        self.mark_row_error(sheet, idx, f'Duplicate facility: {val}')
-                    else:
-                        seen[val] = idx
 
         return issues
 
@@ -435,7 +427,7 @@ class Validator:
             return []
 
         issues = []
-        phone_cols = [c for c in self.find_cols(df, self.user_patterns)
+        phone_cols = [c for c in self.find_cols(df, self.user_columns)
                       if any(p in str(c).lower() for p in ['mobile', 'phone', 'contact'])]
 
         for col in phone_cols:
@@ -466,15 +458,9 @@ class Validator:
 
         issues = []
         check_cols = set()
-        check_cols.update(self.find_name_cols(df, self.boundary_patterns))
-        check_cols.update(self.find_name_cols(df, self.facility_patterns))
-        check_cols.update(self.find_cols(df, self.target_patterns))
-
-        # Also check any column with 'name' in it (generic name columns)
-        for c in df.columns:
-            col_lower = str(c).lower()
-            if 'name' in col_lower and not any(ex in col_lower for ex in self.exclude_from_naming):
-                check_cols.add(c)
+        check_cols.update(self.find_name_cols(df, self.boundary_columns))
+        check_cols.update(self.find_name_cols(df, self.facility_columns))
+        check_cols.update(self.find_cols(df, self.target_columns))
 
         for col in check_cols:
             nulls = df[col].isna() | (df[col].astype(str).str.strip() == '')
@@ -501,16 +487,10 @@ class Validator:
         pattern = f'[^a-zA-Z0-9{re.escape("".join(self.special_allowed))}]'
         cnt = 0
 
-        # Check boundary columns, facility columns, AND generic name columns
+        # Check boundary columns and facility columns
         name_cols = set()
-        name_cols.update(self.find_name_cols_for_naming(df, self.boundary_patterns))
-        name_cols.update(self.find_name_cols_for_naming(df, self.facility_patterns))
-
-        # Also check any column with 'name' in it (but not code/id columns)
-        for c in df.columns:
-            col_lower = str(c).lower()
-            if 'name' in col_lower and not any(ex in col_lower for ex in self.exclude_from_naming):
-                name_cols.add(c)
+        name_cols.update(self.find_name_cols_for_naming(df, self.boundary_columns))
+        name_cols.update(self.find_name_cols_for_naming(df, self.facility_columns))
 
         for col in name_cols:
             for idx, val in df[col].items():
@@ -544,7 +524,7 @@ class Validator:
             return issues  # No parent column found, skip check
 
         # Get all boundary name/code columns that could be parents
-        boundary_cols = self.find_name_cols(df, self.boundary_patterns)
+        boundary_cols = self.find_name_cols(df, self.boundary_columns)
 
         # Also check first column if it's a code column
         first_col = df.columns[0] if len(df.columns) > 0 else None
@@ -666,18 +646,12 @@ class Validator:
 
                 self.file_data[filepath][sheet] = df_with_status
 
-                # Detect boundary/facility sheets using config patterns
+                # Detect boundary/facility sheets
                 sl = sheet.lower()
                 if b_sheet and b_sheet.lower() == sl:
                     b_df, b_name = df, label
                 elif f_sheet and f_sheet.lower() == sl:
                     f_df, f_name = df, label
-                elif any(p in sl for p in self.boundary_sheet_patterns):
-                    if b_df is None:
-                        b_df, b_name = df, label
-                elif any(p in sl for p in self.facility_sheet_patterns):
-                    if f_df is None:
-                        f_df, f_name = df, label
 
             # Run alignment check if both sheets found
             if b_df is not None and f_df is not None:

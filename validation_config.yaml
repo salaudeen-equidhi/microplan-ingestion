@@ -1,6 +1,5 @@
 # Excel Validation Configuration
 # This YAML file defines validation rules for microplan Excel files
-# FULLY CONFIGURABLE - Edit patterns to match your data structure
 
 validation_settings:
   upload_folder: "uploads"
@@ -9,80 +8,6 @@ validation_settings:
     - ".xlsx"
     - ".xls"
     - ".csv"
-
-# =============================================================================
-# COLUMN MAPPINGS - Customize based on your Excel/CSV structure
-# These are PATTERNS (case-insensitive) - if column name CONTAINS any pattern, it matches
-# =============================================================================
-column_mappings:
-
-  # Boundary/Hierarchy columns - ADD YOUR HIERARCHY LEVEL NAMES HERE
-  # Only add columns that are ACTUAL hierarchy levels in your data
-  boundary_columns:
-    - "boundary"
-    - "boundary_name"
-    - "province"
-    - "distrito"
-    - "district"
-    - "municipality"
-    - "locality"
-    - "localidade"
-    - "posto"
-    - "village"
-    - "aldeias"
-    - "povoados"
-    - "sub-hill"
-    - "subhill"
-    - "commune"
-    - "chiefdom"
-    - "subcounty"
-    - "county"
-    - "parish"
-    - "cell"
-
-  # Facility columns
-  facility_columns:
-    - "facility"
-    - "facility_name"
-    - "us"
-    - "deposito"
-    - "unidade"
-    - "unidade sanitaria"
-    - "distribution_site"
-    - "health_facility"
-    - "warehouse"
-    - "site"
-    - "center"
-    - "clinic"
-    - "hospital"
-
-  # Target columns (numeric values) - ADD ALL YOUR TARGET COLUMN PATTERNS
-  # Can have multiple targets: target, target1, target2, population, spaq, etc.
-  target_columns:
-    - "target"
-    - "population"
-    - "households"
-    - "total"
-    - "number"
-    - "count"
-    - "spaq"
-    - "qty"
-    - "quantity"
-    - "beneficiaries"
-    - "coverage"
-
-  # User/Contact columns
-  user_columns:
-    - "user"
-    - "user_name"
-    - "username"
-    - "contact"
-    - "mobile"
-    - "phone"
-    - "team_lead"
-    - "supervisor"
-    - "assigned"
-    - "officer"
 
 # =============================================================================
 # EXCLUDE PATTERNS - Columns to SKIP during certain checks
@@ -197,39 +122,6 @@ validation_rules:
     auto_detect_root: true
     root_threshold_rows: 5
     root_threshold_percent: 0.1
-
-# =============================================================================
-# SHEET CONFIGURATION - How to detect boundary vs facility sheets
-# =============================================================================
-sheet_config:
-  # For single Excel file with multiple sheets
-  single_file:
-    boundary_sheet_patterns:
-      - "boundary"
-      - "boundaries"
-      - "hierarchy"
-      - "unidades"
-      - "location"
-      - "admin"
-    facility_sheet_patterns:
-      - "facility"
-      - "facilities"
-      - "us"
-      - "deposito"
-      - "warehouse"
-      - "site"
-      - "distribution"
-
-  # For two separate files
-  two_file:
-    boundary_file_patterns:
-      - "boundary"
-      - "hierarchy"
-      - "location"
-    facility_file_patterns:
-      - "facility"
-      - "warehouse"
-      - "site"
 
 # =============================================================================
 # REPORT SETTINGS
