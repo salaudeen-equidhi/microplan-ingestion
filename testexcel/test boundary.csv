@@ -1,9 +1,0 @@
-code,name_in_english,name,parent_code,boundary_type,boundary_level,campaign_start_date,campaign_end_date,target_1,target_2
-Maputo_Cidade_001,Maputo Cidade,Maputo Cidade,mz,Provincia,2,08-04-2025,30-04-2025,5550,359
-KaMavota_002,KaMavota,KaMavota,Maputo_Cidade_001,Distrito,3,08-04-2025,30-04-2025,54020,560
-NA_003,test,tets,KaMavota_002,Posto Administrativo,4,08-04-2025,30-04-2025,6650,650
-NA_004,fds,dsr,NA_003,Localidade,5,08-04-2025,30-04-2025,650,6556
-Mahotas_005,Mahotas,Mahotas,NA_004,Aldeia,6,08-04-2025,30-04-2025,12181,58651
-Hulene_A_006,Hulene A,Hulene A,NA_004,Aldeia,6,08-04-2025,30-04-2025,4715,25045
-Hulene_B_007,Hulene B,Hulene B,NA_004,Aldeia,6,08-04-2025,30-04-2025,6,48734
-Hulene_B_007,Hulene B,Hulene B,NA_004,Aldeia,6,08-04-2025,30-04-2025,0,448734
