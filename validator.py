@@ -23,10 +23,7 @@ class Validator:
         self.user_columns = []      # List of user/contact column names
         self.num_targets = 0        # Number of target columns
 
-        # Exclude patterns (from config)
-        self.exclude_patterns = self._get_config_list(['exclude_patterns', 'exclude_from_uniqueness'])
-        self.exclude_from_naming = self._get_config_list(['exclude_patterns', 'exclude_from_naming'])
-        self.root_indicators = self._get_config_list(['exclude_patterns', 'root_indicators'])
+        # Special characters allowed (from config)
         self.special_allowed = self._get_config_list(['validation_rules', 'special_characters', 'allowed_special_chars'])
 
         # Validation rules toggle (from config)
@@ -141,29 +138,12 @@ class Validator:
         return found
 
     def find_name_cols(self, df, col_list):
-        """Find columns matching col_list but EXCLUDE type/level columns."""
-        cols = []
-        df_cols_lower = {str(c).lower(): c for c in df.columns}
-        for col in col_list:
-            col_lower = str(col).lower().strip()
-            if col_lower in df_cols_lower:
-                actual_col = df_cols_lower[col_lower]
-                if not any(ex in col_lower for ex in self.exclude_patterns):
-                    cols.append(actual_col)
-        return cols
+        """Find columns matching col_list (case-insensitive)."""
+        return self.find_cols(df, col_list)
 
     def find_name_cols_for_naming(self, df, col_list):
-        """Find columns for naming convention check - EXCLUDE codes/IDs."""
-        cols = []
-        df_cols_lower = {str(c).lower(): c for c in df.columns}
-        for col in col_list:
-            col_lower = str(col).lower().strip()
-            if col_lower in df_cols_lower:
-                actual_col = df_cols_lower[col_lower]
-                if not any(ex in col_lower for ex in self.exclude_patterns):
-                    if not any(ex in col_lower for ex in self.exclude_from_naming):
-                        cols.append(actual_col)
-        return cols
+        """Find columns for naming convention check (case-insensitive)."""
+        return self.find_cols(df, col_list)
 
     def find_parent_col(self, df):
         """Find the parent column (parent_code, parent_id, parent, etc.)."""
@@ -543,9 +523,6 @@ class Validator:
         for col in boundary_cols:
             valid_parents.update(df[col].dropna().astype(str).str.strip().unique())
 
-        # Root indicators from config (e.g., '', 'root', 'null', 'na', 'mz', etc.)
-        root_indicators_lower = [r.lower() for r in self.root_indicators]
-
         # Detect potential root parents dynamically:
         # If a parent value is used by many rows but doesn't exist in boundary codes,
         # it's likely the root/country level (e.g., "mz" for Mozambique)
@@ -555,7 +532,7 @@ class Validator:
             threshold_rows = self.hierarchy_root_threshold_rows
             threshold_percent = self.hierarchy_root_threshold_percent
             for parent_val, count in parent_counts.items():
-                if parent_val not in valid_parents and parent_val.lower() not in root_indicators_lower:
+                if parent_val not in valid_parents:
                     # If this parent is used by many rows, treat as root
                     if count > threshold_rows or count > len(df) * threshold_percent:
                         detected_roots.add(parent_val)
@@ -565,9 +542,7 @@ class Validator:
             if pd.notna(parent_val):
                 parent_str = str(parent_val).strip()
                 if parent_str and parent_str not in valid_parents:
-                    # Skip if it's a known root indicator or detected root
-                    if parent_str.lower() in root_indicators_lower:
-                        continue
+                    # Skip if it's a detected root
                     if parent_str in detected_roots:
                         continue
 

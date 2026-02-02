@@ -10,50 +10,6 @@ validation_settings:
     - ".csv"
 
 # =============================================================================
-# EXCLUDE PATTERNS - Columns to SKIP during certain checks
-# =============================================================================
-exclude_patterns:
-  # Columns to exclude from UNIQUENESS check (these are types/levels, not names)
-  exclude_from_uniqueness:
-    - "type"
-    - "level"
-    - "hierarchy"
-    - "tier"
-    - "category"
-    - "classification"
-    - "boundary_type"
-    - "boundary_level"
-    - "admin_level"
-    - "status"
-    - "parent_code"
-    - "parent_id"
-    - "parent_name"
-    - "parentcode"
-
-  # Columns to exclude from NAMING CONVENTION check (codes/IDs can have any format)
-  exclude_from_naming:
-    - "code"
-    - "id"
-    - "key"
-    - "uuid"
-    - "guid"
-    - "hash"
-    - "token"
-    - "identifier"
-
-  # Root parent indicators - these won't be flagged as "missing parent"
-  root_indicators:
-    - ""
-    - "root"
-    - "null"
-    - "na"
-    - "n/a"
-    - "none"
-    - "-"
-    - "top"
-    - "country"
-
-# =============================================================================
 # VALIDATION RULES - Enable/disable and configure each rule
 # =============================================================================
 validation_rules:
