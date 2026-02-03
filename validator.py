@@ -234,7 +234,12 @@ class Validator:
         boundary_cols = self.find_cols(df, self.boundary_columns)
         facility_cols = self.find_cols(df, self.facility_columns)
 
-        if boundary_cols:
+        # Detect if this is a boundary file (has 4+ hierarchy columns) vs facility file
+        # Facility files typically have few columns like [Facility Name, District, State]
+        is_boundary_file = len(boundary_cols) >= 4
+
+        # Only check boundary hierarchy duplicates for actual boundary files
+        if boundary_cols and is_boundary_file:
             last_col = boundary_cols[-1]
             parent_cols = boundary_cols[:-1]
 
@@ -272,9 +277,12 @@ class Validator:
                     else:
                         seen[val] = idx
 
+        # Check facility columns for duplicates
         for fac_col in facility_cols:
-            group_col = boundary_cols[-1] if boundary_cols else None
-            if group_col and group_col in df.columns:
+            # For boundary files, group by last boundary column
+            # For facility files, check global duplicates
+            if is_boundary_file and boundary_cols:
+                group_col = boundary_cols[-1]
                 try:
                     for parent_val, group in df.groupby(group_col)[fac_col]:
                         vals = group.dropna().astype(str).str.strip()
@@ -291,6 +299,20 @@ class Validator:
                                 seen[val] = idx
                 except:
                     pass
+            else:
+                # Facility file - check for global duplicates in facility column
+                vals = df[fac_col].dropna().astype(str).str.strip()
+                seen = {}
+                for idx, val in vals.items():
+                    if val in seen:
+                        issues.append({
+                            'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
+                            'column': fac_col, 'row': idx + 2, 'value': val[:40],
+                            'message': f'Duplicate facility (also row {seen[val] + 2})'
+                        })
+                        if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
+                    else:
+                        seen[val] = idx
         return issues
 
     def check_users(self, df, sheet):
@@ -420,10 +442,38 @@ class Validator:
         issues = []
         df_cols_lower = {str(c).lower() for c in df.columns}
 
-        all_configured = (self.boundary_columns + self.facility_columns +
-                         self.target_columns + self.user_columns)
+        # Determine which columns are found
+        boundary_found = [c for c in self.boundary_columns if c and str(c).lower().strip() in df_cols_lower]
+        facility_found = [c for c in self.facility_columns if c and str(c).lower().strip() in df_cols_lower]
+        target_found = [c for c in self.target_columns if c and str(c).lower().strip() in df_cols_lower]
 
-        for col in all_configured:
+        # Detect file type based on which columns are present
+        # If multiple boundary hierarchy columns found -> likely boundary file
+        # If facility columns found but few boundary columns -> likely facility file
+        is_boundary_file = len(boundary_found) >= 3
+        is_facility_file = len(facility_found) > 0 and len(boundary_found) < 3
+
+        # Build list of columns to check based on file type
+        cols_to_check = []
+
+        if is_boundary_file:
+            # For boundary files: check boundary columns and target columns
+            cols_to_check.extend(self.boundary_columns)
+            cols_to_check.extend(self.target_columns)
+        elif is_facility_file:
+            # For facility files: check facility columns only
+            cols_to_check.extend(self.facility_columns)
+        else:
+            # Unknown file type: check all columns that might be relevant
+            # Only report missing if NONE from a category are found
+            if not boundary_found and self.boundary_columns:
+                cols_to_check.extend(self.boundary_columns)
+            if not facility_found and self.facility_columns:
+                cols_to_check.extend(self.facility_columns)
+            if not target_found and self.target_columns:
+                cols_to_check.extend(self.target_columns)
+
+        for col in cols_to_check:
             if col and str(col).lower().strip() not in df_cols_lower:
                 issues.append({
                     'rule': 'Column Not Found', 'severity': 'error', 'sheet': sheet,
