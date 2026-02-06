@@ -1,6 +1,10 @@
-# Microplan Ingestion Validator - Dependencies
+# Microplan Ingestion - Validator + Transformation Dependencies
 pandas
 openpyxl
 xlrd
 pyyaml
 ipywidgets
+sqlalchemy
+shortuuid
+roman
+unidecode

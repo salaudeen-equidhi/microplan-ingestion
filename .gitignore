@@ -29,6 +29,11 @@ error/
 .DS_Store
 Thumbs.db
 .claude
+nul
+
+# Generated DB and CSV exports
+*.db
+csv_export_*/
 # Logs
 *.log
 
