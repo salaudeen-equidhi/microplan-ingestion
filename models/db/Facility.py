@@ -32,7 +32,7 @@ class Facility(Base):
     filename = Column(String, default=None, nullable=True)
 
 
-    __table_args__ = (PrimaryKeyConstraint('facility_name', 'boundary_code'),)
+    __table_args__ = (PrimaryKeyConstraint('facility_name', 'boundary_code'), {'extend_existing': True})
 
     def __repr__(self):
         return f"Facility_{self.facility_name}_{self.boundary_code}"

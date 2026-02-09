@@ -8,6 +8,7 @@ from models.db import Base
 
 class Boundary(Base):
     __tablename__ = "egov_microplan_boundaries"
+    __table_args__ = {'extend_existing': True}
 
     code = Column(String, primary_key=True)
     name_in_english = Column(String, default=None)
