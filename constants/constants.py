@@ -147,6 +147,17 @@ class TransformConfig:
         if not province_code:
             province_code = str(shortuuid.uuid())
 
+        # Determine facility boundary level from alignment mapping
+        facility_col = config_state.get('facility_col', '')
+        alignment = config_state.get('alignment_mapping', {})
+        facility_maps_to = alignment.get(facility_col, '')
+        facility_level = len(level_columns) if level_columns else 4
+        if facility_maps_to and level_columns:
+            for i, name in enumerate(level_columns):
+                if name == facility_maps_to:
+                    facility_level = i + 1
+                    break
+
         cfg.config = {
             'BOUNDARY_1_CODE': country_code,
             'BOUNDARY_2_NAME': user_inputs.get('province_name', ''),
@@ -161,6 +172,7 @@ class TransformConfig:
             'FACILITY_START_ROW': user_inputs.get('facility_start_row', 1),
             'CAMPAIGN_START_DATE': user_inputs.get('campaign_start_date', ''),
             'CAMPAIGN_END_DATE': user_inputs.get('campaign_end_date', ''),
+            'FACILITY_BOUNDARY_LEVEL': facility_level,
         }
 
         return cfg

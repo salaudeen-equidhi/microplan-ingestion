@@ -34,11 +34,15 @@ def create_health_facility(
     # 0) Exact lookup string (no "LGA Store" suffix removal)
     lookup_name = facility_name.strip()
 
+    # Use configured facility boundary level, fall back to deepest level
+    facility_level = getattr(constants, 'FACILITY_BOUNDARY_LEVEL',
+                             max(info["level"] for info in constants.BOUNDARIES.values()))
+
     # 1) Build the base query: match by name, ignore internal spaces (case‑insensitive)
     q = session.query(Boundary).filter(
         func.replace(func.lower(Boundary.name), " ", "") ==
         lookup_name.lower().replace(" ", "")
-    ).filter(Boundary.boundary_level == 4)
+    ).filter(Boundary.boundary_level == facility_level)
 
     if facility_type == "LGA Facility":                  # 1a) optional LGA filter
         lga_type = constants.BOUNDARIES["BOUNDARY_4"]["name"]
@@ -77,7 +81,7 @@ def create_health_facility(
             )
             .filter(Facility.boundary_code == boundary_code)
             .filter(Facility.administrative_area == parent_name)
-            .filter(Boundary.boundary_level == 4)
+            .filter(Boundary.boundary_level == facility_level)
             .first()
         )
 
