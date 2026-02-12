@@ -14,17 +14,6 @@ from utils.common import cleanup
 
 
 def run_transform(boundary_file, facility_file, checklist_file=None, progress=None):
-    """Run the microplan transformation pipeline.
-
-    Args:
-        boundary_file: Path to boundary Excel file or directory containing them.
-        facility_file: Path to facility Excel file or directory containing them.
-        checklist_file: Optional path to checklist_targets.xlsx.
-        progress: Optional callback function(message: str) for progress updates.
-
-    Returns:
-        dict with db_path, boundaries_count, facilities_count.
-    """
     def log(msg):
         if progress:
             progress(msg)
@@ -39,7 +28,7 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
     Base.metadata.create_all(engine)
     log("Database ready.")
 
-    # ── Checklist targets ──────────────────────────────────────
+    # load checklist targets if provided
     checklist_targets_json = {}
     if checklist_file and os.path.exists(checklist_file):
         log("Loading checklist targets...")
@@ -59,22 +48,21 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                     checklist_targets_json[key]["targets"].append(
                         {"beneficiaryType": cn, "totalNo": tv, "targetNo": tv})
 
-    # ── Max boundary level (for target extraction) ─────────────
     max_level = max(info["level"] for info in constants.BOUNDARIES.values())
 
-    # ── BOUNDARY_1 ─────────────────────────────────────────────
+    # country level boundary
     boundaries = {}
     boundary_1 = Boundary(code=constants.BOUNDARY_1_CODE)
     boundaries['BOUNDARY_1'] = boundary_1
 
-    # ── Resolve boundary input files ───────────────────────────
+    # get boundary files
     if os.path.isfile(boundary_file):
         b_files = [boundary_file]
     else:
         b_files = [f.path for f in os.scandir(boundary_file)
                    if f.is_file() and utils.common.is_excel(f)]
 
-    # ── Create boundaries ──────────────────────────────────────
+    # process boundaries
     for fpath in b_files:
         log(f"Loading boundary file: {os.path.basename(fpath)}...")
         wb = openpyxl.load_workbook(fpath, data_only=True)
@@ -87,7 +75,7 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
         boundaries["BOUNDARY_2"] = b2
 
         for si, ws in enumerate(sheets, 1):
-            last_row = ws.max_row  # snapshot before loop to avoid openpyxl expanding
+            last_row = ws.max_row  # snapshot to avoid openpyxl expanding
             total_rows = last_row - constants.START_BOUNDARIES_ROW
             log(f"Processing sheet {si}/{len(sheets)}: {ws.title} ({total_rows} rows)...")
             row = constants.START_BOUNDARIES_ROW
@@ -99,7 +87,7 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                     log(f"  Boundaries: {processed}/{total_rows} rows processed...")
                 targets = {}
 
-                # Extract targets at the deepest boundary level
+                # grab targets at deepest level
                 for bk, bi in constants.BOUNDARIES.items():
                     if bi["level"] >= max_level:
                         col = bi.get("column")
@@ -107,7 +95,7 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                             for tn, tc in constants.TARGET_COLUMNS.items():
                                 targets[tn] = ws[f"{tc}{row}"].value
 
-                # Create boundary hierarchy (level 3+)
+                # build hierarchy (level 3+)
                 for bk, bi in constants.BOUNDARIES.items():
                     if bi["level"] >= 3:
                         col = bi.get("column")
@@ -120,14 +108,14 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                                 session, btype, str(fpath), targets)
                             boundaries[bk] = b
 
-    # ── Resolve facility input files ───────────────────────────
+    # get facility files
     if os.path.isfile(facility_file):
         f_files = [facility_file]
     else:
         f_files = [f.path for f in os.scandir(facility_file)
                    if f.is_file() and utils.common.is_excel(f)]
 
-    # ── Create facilities ──────────────────────────────────────
+    # process facilities
     for fpath in f_files:
         log(f"Loading facility file: {os.path.basename(fpath)}...")
         wb = openpyxl.load_workbook(fpath, data_only=True)
@@ -155,7 +143,7 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                     filename=str(fpath),
                     target=0)
 
-    # ── Results ────────────────────────────────────────────────
+    # wrap up
     log("Finalizing database...")
     b_count = session.query(Boundary).count()
     f_count = session.query(Facility).count()

@@ -8,7 +8,6 @@ from openpyxl.styles import PatternFill, Font, Alignment
 
 
 class Validator:
-    """Validates microplan Excel/CSV files for data quality issues."""
 
     def __init__(self, config_path='validation_config.yaml'):
         self.config = self._load_config(config_path)
@@ -99,7 +98,6 @@ class Validator:
         self.alignment_mapping = mapping or {}
 
     def find_cols(self, df, col_list):
-        """Find columns from dataframe that match the given list (case-insensitive)."""
         df_cols_lower = {str(c).lower(): c for c in df.columns}
         found = []
         for col in col_list:
@@ -128,7 +126,6 @@ class Validator:
             self.row_status[sheet][row]['errors'].append(error_msg)
 
     def check_non_zero(self, df, sheet):
-        """Validate target values are non-zero and rounded."""
         if not self.rules_enabled['non_zero_targets']:
             return []
 
@@ -158,7 +155,6 @@ class Validator:
         return issues
 
     def check_naming(self, df, sheet):
-        """Check for consistent naming convention across name columns."""
         if not self.rules_enabled['naming_convention']:
             return []
 
@@ -188,7 +184,6 @@ class Validator:
         return issues
 
     def check_alignment(self, b_df, f_df, b_sheet, f_sheet):
-        """Check that facility data exists in boundary file."""
         if not self.rules_enabled['boundary_alignment'] or not self.alignment_mapping:
             return []
 
@@ -225,7 +220,6 @@ class Validator:
         return issues
 
     def check_unique(self, df, sheet):
-        """Check for duplicate names under same parent hierarchy."""
         if not self.rules_enabled['unique_names']:
             return []
 
@@ -234,11 +228,9 @@ class Validator:
         boundary_cols = self.find_cols(df, self.boundary_columns)
         facility_cols = self.find_cols(df, self.facility_columns)
 
-        # Detect if this is a boundary file (has 4+ hierarchy columns) vs facility file
-        # Facility files typically have few columns like [Facility Name, District, State]
+        # 4+ hierarchy cols = boundary file, fewer = facility file
         is_boundary_file = len(boundary_cols) >= 4
 
-        # Only check boundary hierarchy duplicates for actual boundary files
         if boundary_cols and is_boundary_file:
             last_col = boundary_cols[-1]
             parent_cols = boundary_cols[:-1]
@@ -277,10 +269,7 @@ class Validator:
                     else:
                         seen[val] = idx
 
-        # Check facility columns for duplicates
         for fac_col in facility_cols:
-            # For boundary files, group by last boundary column
-            # For facility files, check global duplicates
             if is_boundary_file and boundary_cols:
                 group_col = boundary_cols[-1]
                 try:
@@ -300,7 +289,6 @@ class Validator:
                 except:
                     pass
             else:
-                # Facility file - check for global duplicates in facility column
                 vals = df[fac_col].dropna().astype(str).str.strip()
                 seen = {}
                 for idx, val in vals.items():
@@ -316,7 +304,6 @@ class Validator:
         return issues
 
     def check_users(self, df, sheet):
-        """Check for duplicate phone/contact numbers."""
         if not self.rules_enabled['user_mapping']:
             return []
 
@@ -342,7 +329,6 @@ class Validator:
         return issues
 
     def check_missing(self, df, sheet):
-        """Check for blank values in required fields."""
         if not self.rules_enabled['no_missing_entries']:
             return []
 
@@ -364,7 +350,6 @@ class Validator:
         return issues
 
     def check_special(self, df, sheet):
-        """Check for unusual special characters in names."""
         if not self.rules_enabled['special_characters']:
             return []
 
@@ -393,7 +378,6 @@ class Validator:
         return issues
 
     def check_hierarchy(self, df, sheet):
-        """Check that parent references exist in the data."""
         if not self.rules_enabled['hierarchy_check']:
             return []
 
@@ -438,34 +422,25 @@ class Validator:
         return issues
 
     def check_columns_exist(self, df, sheet):
-        """Check if configured columns exist in the dataframe."""
         issues = []
         df_cols_lower = {str(c).lower() for c in df.columns}
 
-        # Determine which columns are found
         boundary_found = [c for c in self.boundary_columns if c and str(c).lower().strip() in df_cols_lower]
         facility_found = [c for c in self.facility_columns if c and str(c).lower().strip() in df_cols_lower]
         target_found = [c for c in self.target_columns if c and str(c).lower().strip() in df_cols_lower]
 
-        # Detect file type based on which columns are present
-        # If multiple boundary hierarchy columns found -> likely boundary file
-        # If facility columns found but few boundary columns -> likely facility file
+        # 3+ boundary cols = boundary file, else facility file
         is_boundary_file = len(boundary_found) >= 3
         is_facility_file = len(facility_found) > 0 and len(boundary_found) < 3
 
-        # Build list of columns to check based on file type
         cols_to_check = []
 
         if is_boundary_file:
-            # For boundary files: check boundary columns and target columns
             cols_to_check.extend(self.boundary_columns)
             cols_to_check.extend(self.target_columns)
         elif is_facility_file:
-            # For facility files: check facility columns only
             cols_to_check.extend(self.facility_columns)
         else:
-            # Unknown file type: check all columns that might be relevant
-            # Only report missing if NONE from a category are found
             if not boundary_found and self.boundary_columns:
                 cols_to_check.extend(self.boundary_columns)
             if not facility_found and self.facility_columns:
@@ -483,7 +458,6 @@ class Validator:
         return issues
 
     def validate_df(self, df, sheet):
-        """Run all validation checks on a dataframe."""
         self.init_row_status(df, sheet)
         issues = []
         issues.extend(self.check_columns_exist(df, sheet))
@@ -497,7 +471,6 @@ class Validator:
         return issues
 
     def read_file(self, filepath):
-        """Read Excel or CSV file into dict of dataframes."""
         if self.is_csv(filepath):
             return {os.path.basename(filepath): pd.read_csv(filepath)}
         else:
@@ -507,7 +480,6 @@ class Validator:
                     if not pd.read_excel(xls, sheet_name=sheet).empty}
 
     def validate_file(self, filepath, b_sheet=None, f_sheet=None):
-        """Validate a file and return issues with summary."""
         issues = []
         b_df, f_df, b_name, f_name = None, None, None, None
 
@@ -566,7 +538,6 @@ class Validator:
         return summary
 
     def save_validated_files(self, output_folder='error'):
-        """Save validated files with color-coded status."""
         self.output_files = []
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 
