@@ -34,10 +34,10 @@ def export_data_to_csv(db_file, facility_table, boundary_table, output_folder):
 if __name__ == '__main__':
     # Specify the SQLite database file and table names
 
-    db_file = 'niassa-full-ingestion-20Jan-2026.db'
+    db_file = 'output/niassa-full-ingestion-20Jan-2026.db'
     facility_table = 'egov_microplan_facilities'
     boundary_table = 'egov_microplan_boundaries'
-    output_folder = 'files/output/niassa-full-ingestion-20Jan-2026'
+    output_folder = 'output/csv_export_niassa-full-ingestion-20Jan-2026'
 
     # Call the export function
     export_data_to_csv(db_file, facility_table,

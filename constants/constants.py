@@ -15,7 +15,7 @@ HF_CODE_START_ROW = 4
 
 START_BOUNDARIES_ROW = 1
 BOUNDARY_1_CODE = "mz"
-DB_CONNECTION_STRING = "sqlite:///niassa-full-ingestion-20Jan-2026.db"
+DB_CONNECTION_STRING = "sqlite:///output/microplan.db"
 
 CHECKLIST_TARGETS = "{\"fields\":[]}"
 BENEFICIARY_PER_CD = 260
