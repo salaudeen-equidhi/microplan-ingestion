@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, Integer, DateTime
 
 import constants
 from constants import CHECKLIST_TARGETS
-from models.db import Base
+from models.db.Base import Base
 
 class Boundary(Base):
     __tablename__ = "egov_microplan_boundaries"

@@ -3,7 +3,7 @@ import datetime
 from sqlalchemy import Column, String, Boolean, Integer, Float, PrimaryKeyConstraint, DateTime
 
 
-from models.db import Base
+from models.db.Base import Base
 
 
 class Facility(Base):
