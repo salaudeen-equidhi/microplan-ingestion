@@ -3,3 +3,4 @@ from .validation_ui import build_validation_ui
 from .transform_ui import build_transform_ui
 from .export_ui import build_export_ui
 from .boundaryingestui import build_boundaryingest_ui
+from .facilityingestui import build_facilityingest_ui

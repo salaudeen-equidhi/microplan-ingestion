@@ -7,6 +7,8 @@ from utils.api import ingest_boundary
 
 def build_boundaryingest_ui(ctx):
     OUTPUT_DIR = ctx['OUTPUT_DIR']
+    UPLOADS_DIR = ctx['UPLOADS_DIR']
+    ERROR_DIR = ctx['ERROR_DIR']
 
     api_url_input = widgets.Text(
         value='http://hcm-moz-impl.egov:8080/hcm-moz-impl/v1/dhis2/OU/ingest?source=EXCEL',
@@ -44,7 +46,12 @@ def build_boundaryingest_ui(ctx):
 
     def scan_boundary_csvs():
         """Scan output/csv_export_*/ for boundary CSV files."""
-        pattern = os.path.join(OUTPUT_DIR, 'csv_export_*', '*boundar*.csv')
+        path = [
+            os.path.join(UPLOADS_DIR, '*.csv'),
+            os.path.join(UPLOADS_DIR, '*.xls'),
+            os.path.join(UPLOADS_DIR, '*.xlsx'),
+        ]
+
         return sorted(glob.glob(pattern))
 
     def on_refresh(btn):
