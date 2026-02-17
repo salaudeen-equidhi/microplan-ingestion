@@ -34,6 +34,7 @@ nul
 # Generated DB and CSV exports
 *.db
 csv_export_*/
+output
 # Logs
 *.log
 
