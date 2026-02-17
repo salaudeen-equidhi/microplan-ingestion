@@ -1,5 +1,6 @@
 import os
 import glob
+import base64
 import ipywidgets as widgets
 from IPython.display import display, HTML
 from utils.facility_prep import generate_hf_district_mapping, fill_parent_codes
@@ -153,9 +154,14 @@ def build_facilityingest_ui(ctx):
                     hf_type_name=hf_type, district_type_name=district_type,
                 )
                 prepared_csv_path['value'] = output_path
+                with open(output_path, 'rb') as dl:
+                    b64 = base64.b64encode(dl.read()).decode()
                 display(HTML(
                     f'<p style="color:green"><b>Done!</b> Updated parent codes for <b>{updated}</b> facilities.</p>'
-                    f'<p>Prepared file saved to: <code>{output_path}</code></p>'
+                    f'<p><a href="data:text/csv;base64,{b64}" download="{output_name}" '
+                    f'style="display:inline-block; padding:8px 15px; background:#4caf50; color:white; '
+                    f'text-decoration:none; border-radius:4px; margin:4px 0;">'
+                    f'Download {output_name}</a></p>'
                 ))
             except Exception as e:
                 display(HTML(f'<p style="color:red"><b>Error:</b> {e}</p>'))

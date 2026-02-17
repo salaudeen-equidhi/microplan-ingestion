@@ -46,13 +46,15 @@ def build_boundaryingest_ui(ctx):
 
     def scan_boundary_csvs():
         """Scan output/csv_export_*/ for boundary CSV files."""
-        path = [
+        patterns = [
             os.path.join(UPLOADS_DIR, '*.csv'),
             os.path.join(UPLOADS_DIR, '*.xls'),
             os.path.join(UPLOADS_DIR, '*.xlsx'),
         ]
-
-        return sorted(glob.glob(pattern))
+        files = []
+        for p in patterns:
+            files.extend(glob.glob(p))
+        return sorted(files)
 
     def on_refresh(btn):
         files = scan_boundary_csvs()
