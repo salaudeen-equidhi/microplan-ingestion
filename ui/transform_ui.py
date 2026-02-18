@@ -8,26 +8,7 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 from IPython.display import display, HTML, clear_output
 import ipywidgets as widgets
-
-
-def detect_columns(file_path, header_row=1):
-    """Read Excel header row -> {column_name: column_letter} mapping."""
-    wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
-    ws = None
-    for s in wb.worksheets:
-        if s.sheet_state == 'visible':
-            ws = s
-            break
-    if ws is None:
-        ws = wb.active
-    mapping = {}
-    for row in ws.iter_rows(min_row=header_row, max_row=header_row):
-        for cell in row:
-            if cell.value is not None:
-                col_letter = get_column_letter(cell.column)
-                mapping[str(cell.value).strip()] = col_letter
-    wb.close()
-    return mapping
+from utils.common import detect_columns
 
 
 def build_transform_ui(ctx):

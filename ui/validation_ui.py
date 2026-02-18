@@ -28,11 +28,11 @@ def build_validation_ui(ctx):
         style={'description_width': '130px'})
 
     boundry_manual_path = widgets.Text(
-        description='', value='',
+        description='', value=file_state.get('boundary_file') or '',
         placeholder='or manually type boundary file path')
 
     facility_manual_path = widgets.Text(
-        description='', value='',
+        description='', value=file_state.get('facility_file') or '',
         placeholder='or manually type facility file path')
 
     def scan_csv_file():
