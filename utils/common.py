@@ -66,5 +66,34 @@ def detect_columns(file_path, header_row=1):
     return mapping
 
 
+CASING_OPTIONS = {
+    'none': 'No change (keep original)',
+    'title': 'Title Case (Each Word Capitalized)',
+    'upper': 'UPPER CASE',
+    'lower': 'lower case',
+    'sentence': 'Sentence case (first word only)',
+}
+
+# Active casing mode — set by config UI, used by cleanup()
+_casing_mode = 'none'
+
+
+def set_casing_mode(mode):
+    global _casing_mode
+    _casing_mode = mode
+
+
 def cleanup(name):
-    return name
+    """Normalize name: strip whitespace and apply chosen casing."""
+    if name is None:
+        return name
+    s = str(name).strip()
+    if _casing_mode == 'title':
+        return s.title()
+    elif _casing_mode == 'upper':
+        return s.upper()
+    elif _casing_mode == 'lower':
+        return s.lower()
+    elif _casing_mode == 'sentence':
+        return s.capitalize()
+    return s

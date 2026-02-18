@@ -136,8 +136,8 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
                 if not fac_name or not mapping:
                     continue
                 utils.facility.create_health_facility(
-                    facility_name=fac_name,
-                    mapping_boundary=mapping,
+                    facility_name=cleanup(fac_name),
+                    mapping_boundary=cleanup(mapping),
                     session=session,
                     facility_type="Health Facility",
                     filename=str(fpath),

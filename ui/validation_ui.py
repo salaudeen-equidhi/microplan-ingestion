@@ -107,6 +107,11 @@ def build_validation_ui(ctx):
         file_state['facility_file'] = facility_path
 
         validator.reset()
+
+        # Skip naming convention check if auto-fix casing is enabled
+        if config_state.get('casing_mode', 'none') != 'none':
+            validator.rules_enabled['naming_convention'] = False
+
         show_status('Validating...', 'blue')
         all_issues = []
         summary = {'total': 0, 'errors': 0, 'warnings': 0, 'by_rule': defaultdict(int)}

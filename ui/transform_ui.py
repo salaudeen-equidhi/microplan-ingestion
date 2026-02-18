@@ -270,6 +270,10 @@ def build_transform_ui(ctx):
                     if mod_name in sys.modules:
                         importlib.reload(sys.modules[mod_name])
 
+                # Restore casing mode after reload
+                from utils.common import set_casing_mode
+                set_casing_mode(config_state.get('casing_mode', 'none'))
+
                 # Build and apply config AFTER reload
                 log_progress("Applying configuration...")
                 from constants.constants import TransformConfig
