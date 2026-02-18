@@ -1,4 +1,5 @@
 import os
+import glob
 import ipywidgets as widgets
 from IPython.display import display, HTML, clear_output
 from utils.common import detect_columns, CASING_OPTIONS, set_casing_mode
@@ -17,11 +18,52 @@ def build_config_ui(ctx):
     out_config = widgets.Output()
     out_detect = widgets.Output()
 
-    # ── Section A: File Upload ──
-    upload_boundary = widgets.FileUpload(
-        accept='.xlsx,.xls,.csv', multiple=False, description='Boundary File')
-    upload_facility = widgets.FileUpload(
-        accept='.xlsx,.xls,.csv', multiple=False, description='Facility File')
+    # ── Section A: Select Files (dropdown + manual path) ──
+    style_wide = {'description_width': '130px'}
+
+    boundary_dropdown = widgets.Dropdown(
+        options=[('Click Refresh to scan', '')],
+        description='Boundary File:',
+        style=style_wide, layout=widgets.Layout(width='600px'))
+
+    facility_dropdown = widgets.Dropdown(
+        options=[('Click Refresh to scan', '')],
+        description='Facility File:',
+        style=style_wide, layout=widgets.Layout(width='600px'))
+
+    boundary_manual = widgets.Text(
+        value=file_state.get('boundary_file') or '',
+        placeholder='or type boundary file path here',
+        description='',
+        layout=widgets.Layout(width='600px'))
+
+    facility_manual = widgets.Text(
+        value=file_state.get('facility_file') or '',
+        placeholder='or type facility file path here',
+        description='',
+        layout=widgets.Layout(width='600px'))
+
+    def scan_files():
+        files = glob.glob(os.path.join(UPLOADS_DIR, '*.xlsx'))
+        return sorted(files)
+
+    btn_refresh = widgets.Button(
+        description='Refresh', button_style='info', icon='refresh',
+        layout=widgets.Layout(width='100px'))
+
+    def on_refresh(btn):
+        files = scan_files()
+        if files:
+            opts = [('-- select --', '')] + [(os.path.basename(f), f) for f in files]
+        else:
+            opts = [('No .xlsx files found', '')]
+        boundary_dropdown.options = opts
+        facility_dropdown.options = opts
+        boundary_dropdown.value = ''
+        facility_dropdown.value = ''
+
+    btn_refresh.on_click(on_refresh)
+
     w_header_row = widgets.IntText(
         value=1, description='Header Row:', style={'description_width': '90px'},
         layout=widgets.Layout(width='200px'))
@@ -31,7 +73,7 @@ def build_config_ui(ctx):
         layout=widgets.Layout(width='150px'))
 
     # ── Section B: Boundary Config (dropdowns) ──
-    PLACEHOLDER = [('(upload file first)', '')]
+    PLACEHOLDER = [('(detect headers first)', '')]
 
     first_level = widgets.Dropdown(
         options=PLACEHOLDER, description='Level 1:',
@@ -70,41 +112,29 @@ def build_config_ui(ctx):
         options=PLACEHOLDER, description='Maps to:',
         style={'description_width': '70px'}, layout=widgets.Layout(width='250px'))
 
-    def _save_upload(uploader, key):
-        """Save uploaded file to UPLOADS_DIR and store path in file_state."""
-        if not uploader.value:
-            return None
-        files = uploader.value
-        info = files[0] if isinstance(files, tuple) else list(files.values())[0]
-        name = info.name if hasattr(info, 'name') else info['name']
-        content = info.content if hasattr(info, 'content') else info['content']
-        path = os.path.join(UPLOADS_DIR, name)
-        with open(path, 'wb') as f:
-            f.write(content)
-        file_state[key] = path
-        return path
+    def _get_boundary_path():
+        return boundary_manual.value.strip() or boundary_dropdown.value or ''
+
+    def _get_facility_path():
+        return facility_manual.value.strip() or facility_dropdown.value or ''
 
     def _make_options(headers):
-        """Build dropdown options list from header names."""
         if not headers:
             return PLACEHOLDER
         return [('-- select --', '')] + [(h, h) for h in headers]
 
     def _refresh_boundary_dropdowns():
-        """Update all boundary-sourced dropdowns with current boundary_headers."""
         opts = _make_options(boundary_headers)
         for box in level_boxes:
             old = box.value
             box.options = opts
             if old in boundary_headers:
                 box.value = old
-        # Refresh target dropdowns
         for box in target_boxes:
             old = box.value
             box.options = opts
             if old in boundary_headers:
                 box.value = old
-        # Refresh facility "maps to" dropdowns
         for dd in [facility_map, district_map, state_map]:
             old = dd.value
             dd.options = opts
@@ -112,7 +142,6 @@ def build_config_ui(ctx):
                 dd.value = old
 
     def _refresh_facility_dropdowns():
-        """Update all facility-sourced dropdowns with current facility_headers."""
         opts = _make_options(facility_headers)
         for dd in [facility_col, district_col, state_col]:
             old = dd.value
@@ -124,15 +153,17 @@ def build_config_ui(ctx):
         with out_detect:
             clear_output(wait=True)
 
-            # Save files if uploaded
-            _save_upload(upload_boundary, 'boundary_file')
-            _save_upload(upload_facility, 'facility_file')
+            b_path = _get_boundary_path()
+            f_path = _get_facility_path()
 
-            b_path = file_state.get('boundary_file')
-            f_path = file_state.get('facility_file')
+            # Store paths in file_state
+            if b_path:
+                file_state['boundary_file'] = b_path
+            if f_path:
+                file_state['facility_file'] = f_path
 
             if not b_path and not f_path:
-                display(HTML("<p style='color:red'>Upload at least one file to detect headers.</p>"))
+                display(HTML("<p style='color:red'>Select or enter at least one file path first.</p>"))
                 return
 
             hr = w_header_row.value
@@ -148,6 +179,8 @@ def build_config_ui(ctx):
                     msgs.append(f"Boundary: {len(boundary_headers)} headers detected")
                 except Exception as e:
                     msgs.append(f"<span style='color:red'>Boundary error: {e}</span>")
+            elif b_path:
+                msgs.append(f"<span style='color:red'>Boundary file not found: {b_path}</span>")
 
             if f_path and os.path.exists(f_path):
                 try:
@@ -156,6 +189,8 @@ def build_config_ui(ctx):
                     msgs.append(f"Facility: {len(facility_headers)} headers detected")
                 except Exception as e:
                     msgs.append(f"<span style='color:red'>Facility error: {e}</span>")
+            elif f_path:
+                msgs.append(f"<span style='color:red'>Facility file not found: {f_path}</span>")
 
             _refresh_boundary_dropdowns()
             _refresh_facility_dropdowns()
@@ -211,6 +246,14 @@ def build_config_ui(ctx):
                 display(HTML("<p style='color:red'>Select at least one boundary level!</p>"))
                 return
 
+            # Update file_state from current selections
+            b_path = _get_boundary_path()
+            f_path = _get_facility_path()
+            if b_path:
+                file_state['boundary_file'] = b_path
+            if f_path:
+                file_state['facility_file'] = f_path
+
             mapping = {}
             if facility_col.value and facility_map.value:
                 mapping[facility_col.value] = facility_map.value
@@ -242,11 +285,14 @@ def build_config_ui(ctx):
     btn_save.on_click(save_config)
 
     return widgets.VBox([
-        widgets.HTML("<h3>Step 1: Upload Files</h3>"),
-        widgets.HBox([
-            widgets.VBox([widgets.HTML('<b>Boundary File:</b>'), upload_boundary]),
-            widgets.VBox([widgets.HTML('<b>Facility File:</b>'), upload_facility]),
-        ]),
+        widgets.HTML("<h3>Step 1: Select Files</h3>"),
+        widgets.HTML("<em>Select from dropdown (click Refresh first) or type the file path manually</em>"),
+        widgets.HTML('<b>Boundary File:</b>'),
+        widgets.HBox([boundary_dropdown, btn_refresh]),
+        boundary_manual,
+        widgets.HTML('<b>Facility File:</b>'),
+        facility_dropdown,
+        facility_manual,
         widgets.HBox([w_header_row, btn_detect]),
         out_detect,
         widgets.HTML("<h3>Step 2: Boundary Levels (from boundary file headers)</h3>"),

@@ -18,20 +18,60 @@ def build_facilityingest_ui(ctx):
 
     # ====== Section A: Prepare Parent Codes ======
 
-    facility_upload = widgets.FileUpload(
-        description='Upload:',
-        accept='.csv',
-        multiple=False,
-        layout=widgets.Layout(width='400px'),
+    facility_dropdown = widgets.Dropdown(
+        options=[('Click Refresh to scan', '')],
+        description='Facility CSV:',
+        style={'description_width': '150px'},
+        layout=widgets.Layout(width='600px'),
+    )
+
+    facility_manual = widgets.Text(
+        value='',
+        placeholder='or type facility CSV file path here',
+        description='',
+        layout=widgets.Layout(width='600px'),
     )
 
     boundary_dropdown = widgets.Dropdown(
         options=[('Click Refresh to scan', '')],
-        description='Select File:',
+        description='Boundary CSV:',
         style={'description_width': '150px'},
         layout=widgets.Layout(width='600px'),
     )
-    refresh_boundary_btn = widgets.Button(description='Refresh', icon='refresh')
+
+    boundary_manual = widgets.Text(
+        value='',
+        placeholder='or type boundary CSV file path here',
+        description='',
+        layout=widgets.Layout(width='600px'),
+    )
+
+    refresh_btn = widgets.Button(
+        description='Refresh', icon='refresh',
+        layout=widgets.Layout(width='100px'))
+
+    def scan_csv_files():
+        patterns = [
+            os.path.join(UPLOADS_DIR, '*.csv'),
+            os.path.join(OUTPUT_DIR, 'csv_export_*', '*.csv'),
+        ]
+        files = []
+        for p in patterns:
+            files.extend(glob.glob(p))
+        return sorted(files)
+
+    def on_refresh(btn):
+        files = scan_csv_files()
+        if files:
+            opts = [('-- select --', '')] + [(os.path.basename(f), f) for f in files]
+        else:
+            opts = [('No CSV files found', '')]
+        facility_dropdown.options = opts
+        boundary_dropdown.options = opts
+        facility_dropdown.value = ''
+        boundary_dropdown.value = ''
+
+    refresh_btn.on_click(on_refresh)
 
     state_code_input = widgets.Text(
         value='',
@@ -79,51 +119,17 @@ def build_facilityingest_ui(ctx):
     # Track the prepared CSV path for Section B
     prepared_csv_path = {'value': ''}
 
-    def scan_boundary_csvs():
-        patterns = [
-            os.path.join(UPLOADS_DIR, '*.csv'),
-            os.path.join(UPLOADS_DIR, '*.xls'),
-            os.path.join(UPLOADS_DIR, '*.xlsx'),
-        ]
-        files = []
-        for p in patterns:
-            files.extend(glob.glob(p))
-        return sorted(files)
-
-    def on_refresh_boundary(btn):
-        files = scan_boundary_csvs()
-        if files:
-            boundary_dropdown.options = [('Select a file', '')] + [
-                (os.path.basename(f), f) for f in files
-            ]
-        else:
-            boundary_dropdown.options = [('No files found', '')]
-        boundary_dropdown.value = ''
-
     def on_generate(btn):
         prep_output.clear_output()
         with prep_output:
-            # Get uploaded facility CSV
-            if not facility_upload.value:
-                display(HTML('<p style="color:red">Please upload the facility CSV file.</p>'))
+            facility_path = facility_manual.value.strip() or facility_dropdown.value
+            if not facility_path or not os.path.isfile(facility_path):
+                display(HTML('<p style="color:red">Please select or enter the facility CSV file path.</p>'))
                 return
 
-            files = facility_upload.value
-            info = files[0] if isinstance(files, tuple) else list(files.values())[0]
-            facility_name = info.name if hasattr(info, 'name') else info['name']
-            content = info.content if hasattr(info, 'content') else info['content']
-
-            # Save uploaded file
-            upload_dir = os.path.join(OUTPUT_DIR, 'facility_prep')
-            os.makedirs(upload_dir, exist_ok=True)
-            facility_path = os.path.join(upload_dir, facility_name)
-            with open(facility_path, 'wb') as f:
-                f.write(content)
-
-            # Get boundary CSV
-            boundary_path = boundary_dropdown.value
+            boundary_path = boundary_manual.value.strip() or boundary_dropdown.value
             if not boundary_path or not os.path.isfile(boundary_path):
-                display(HTML('<p style="color:red">Please select the boundary CSV file.</p>'))
+                display(HTML('<p style="color:red">Please select or enter the boundary CSV file path.</p>'))
                 return
 
             state_code = state_code_input.value.strip()
@@ -144,7 +150,9 @@ def build_facilityingest_ui(ctx):
                 display(HTML(f'<p style="color:red"><b>Error:</b> {e}</p>'))
                 return
 
-            output_name = facility_name.rsplit('.', 1)[0] + '_prepared.csv'
+            upload_dir = os.path.join(OUTPUT_DIR, 'facility_prep')
+            os.makedirs(upload_dir, exist_ok=True)
+            output_name = os.path.basename(facility_path).rsplit('.', 1)[0] + '_prepared.csv'
             output_path = os.path.join(upload_dir, output_name)
 
             display(HTML('<p>Step 2: Filling parent codes in facility file...</p>'))
@@ -166,7 +174,7 @@ def build_facilityingest_ui(ctx):
             except Exception as e:
                 display(HTML(f'<p style="color:red"><b>Error:</b> {e}</p>'))
 
-    refresh_boundary_btn.on_click(on_refresh_boundary)
+    refresh_btn.on_click(on_refresh)
     generate_btn.on_click(on_generate)
 
     # ====== Section B: Ingest ======
@@ -200,6 +208,14 @@ def build_facilityingest_ui(ctx):
         style={'description_width': '120px'},
         layout=widgets.Layout(width='600px'),
     )
+
+    ingest_manual = widgets.Text(
+        value='',
+        placeholder='or type prepared CSV file path here',
+        description='',
+        layout=widgets.Layout(width='600px'),
+    )
+
     refresh_ingest_btn = widgets.Button(description='Refresh', icon='refresh')
     ingest_btn = widgets.Button(description='Upload to Server', button_style='info', icon='upload')
     ingest_output = widgets.Output()
@@ -215,11 +231,11 @@ def build_facilityingest_ui(ctx):
     def on_refresh_ingest(btn):
         files = scan_facility_csvs()
         if files:
-            ingest_file_dropdown.options = [('Select a file', '')] + [
+            ingest_file_dropdown.options = [('-- select --', '')] + [
                 (os.path.basename(f), f) for f in files
             ]
         else:
-            ingest_file_dropdown.options = [('No prepared files found — run Step A first', '')]
+            ingest_file_dropdown.options = [('No prepared files found', '')]
         ingest_file_dropdown.value = ''
 
     def on_ingest(btn):
@@ -228,7 +244,7 @@ def build_facilityingest_ui(ctx):
             url = api_url_input.value.strip()
             tenant = tenant_input.value.strip()
             project_type = project_type_input.value.strip()
-            csv_path = ingest_file_dropdown.value
+            csv_path = ingest_manual.value.strip() or ingest_file_dropdown.value
 
             if not url:
                 display(HTML('<p style="color:red">Please enter the server URL.</p>'))
@@ -269,7 +285,7 @@ def build_facilityingest_ui(ctx):
     help_text = """
     <div style="padding:10px; background:#f0f4ff; border-radius:5px; margin-bottom:10px">
     <b>Instructions:</b><br/>
-    1. Upload the facility CSV (with warehouse rows, UUIDs, and facility types already added)<br/>
+    1. Select the facility CSV (with warehouse rows, UUIDs, and facility types already added)<br/>
     2. Select the boundary CSV exported earlier<br/>
     3. Enter the <b>state boundary code</b> from the boundary CSV<br/>
     4. Choose the <b>lowest level</b> (e.g. Village) and <b>district level</b> (e.g. District) from your boundary hierarchy<br/>
@@ -285,9 +301,11 @@ def build_facilityingest_ui(ctx):
         # Section A
         widgets.HTML('<h4>A. Prepare Facility File</h4>'),
         widgets.HTML('<b>Facility CSV</b> <i>(with warehouse rows, UUIDs, and facility types added)</i>'),
-        facility_upload,
+        widgets.HBox([facility_dropdown, refresh_btn]),
+        facility_manual,
         widgets.HTML('<b>Boundary CSV</b> <i>(exported in the previous step)</i>'),
-        widgets.HBox([boundary_dropdown, refresh_boundary_btn]),
+        boundary_dropdown,
+        boundary_manual,
         state_code_input,
         widgets.HBox([hf_parent_level, district_level]),
         widgets.HBox([hf_type_input, district_type_input]),
@@ -302,6 +320,7 @@ def build_facilityingest_ui(ctx):
         tenant_input,
         project_type_input,
         widgets.HBox([ingest_file_dropdown, refresh_ingest_btn]),
+        ingest_manual,
         ingest_btn,
         ingest_output,
     ])
