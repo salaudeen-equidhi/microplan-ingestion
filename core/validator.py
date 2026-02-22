@@ -17,7 +17,6 @@ class Validator:
         self.boundary_columns = []
         self.facility_columns = []
         self.target_columns = []
-        self.user_columns = []
         self.num_targets = 0
 
         self.special_allowed = self._get_config_list(['validation_rules', 'special_characters', 'allowed_special_chars'])
@@ -27,7 +26,6 @@ class Validator:
             'naming_convention': self._get_config_bool(['validation_rules', 'naming_convention', 'enabled']),
             'boundary_alignment': self._get_config_bool(['validation_rules', 'boundary_alignment', 'enabled']),
             'unique_names': self._get_config_bool(['validation_rules', 'unique_names', 'enabled']),
-            'user_mapping': self._get_config_bool(['validation_rules', 'user_mapping', 'enabled']),
             'no_missing_entries': self._get_config_bool(['validation_rules', 'no_missing_entries', 'enabled']),
             'special_characters': self._get_config_bool(['validation_rules', 'special_characters', 'enabled']),
             'hierarchy_check': self._get_config_bool(['validation_rules', 'hierarchy_check', 'enabled'])
@@ -38,7 +36,6 @@ class Validator:
             'naming_convention': self._get_config_value(['validation_rules', 'naming_convention', 'severity'], 'warning'),
             'boundary_alignment': self._get_config_value(['validation_rules', 'boundary_alignment', 'severity'], 'error'),
             'unique_names': self._get_config_value(['validation_rules', 'unique_names', 'severity'], 'error'),
-            'user_mapping': self._get_config_value(['validation_rules', 'user_mapping', 'severity'], 'warning'),
             'no_missing_entries': self._get_config_value(['validation_rules', 'no_missing_entries', 'severity'], 'error'),
             'special_characters': self._get_config_value(['validation_rules', 'special_characters', 'severity'], 'error'),
             'hierarchy_check': self._get_config_value(['validation_rules', 'hierarchy_check', 'severity'], 'error')
@@ -89,11 +86,10 @@ class Validator:
         except (KeyError, TypeError):
             return default
 
-    def set_columns(self, boundary_cols=None, facility_cols=None, target_cols=None, user_cols=None, num_targets=0):
+    def set_columns(self, boundary_cols=None, facility_cols=None, target_cols=None, num_targets=0):
         self.boundary_columns = boundary_cols or []
         self.facility_columns = facility_cols or []
         self.target_columns = target_cols or []
-        self.user_columns = user_cols or []
         self.num_targets = num_targets
 
     def set_alignment_mapping(self, mapping):
@@ -305,31 +301,6 @@ class Validator:
                         seen[val] = idx
         return issues
 
-    def check_users(self, df, sheet):
-        if not self.rules_enabled['user_mapping']:
-            return []
-
-        issues = []
-        sev = self.rules_severity['user_mapping']
-        phone_cols = [c for c in self.find_cols(df, self.user_columns)
-                      if any(p in str(c).lower() for p in ['mobile', 'phone', 'contact'])]
-
-        for col in phone_cols:
-            if col in df.columns:
-                vals = df[col].dropna().astype(str).str.replace(r'[\s\-\(\)]', '', regex=True)
-                seen = {}
-                for idx, val in vals.items():
-                    if val:
-                        if val in seen:
-                            issues.append({
-                                'rule': 'User Mapping', 'severity': sev, 'sheet': sheet,
-                                'column': col, 'row': idx + 2, 'value': val,
-                                'message': f'Duplicate contact (also row {seen[val] + 2})'
-                            })
-                        else:
-                            seen[val] = idx
-        return issues
-
     def check_missing(self, df, sheet):
         if not self.rules_enabled['no_missing_entries']:
             return []
@@ -466,7 +437,6 @@ class Validator:
         issues.extend(self.check_non_zero(df, sheet))
         issues.extend(self.check_naming(df, sheet))
         issues.extend(self.check_unique(df, sheet))
-        issues.extend(self.check_users(df, sheet))
         issues.extend(self.check_missing(df, sheet))
         issues.extend(self.check_special(df, sheet))
         issues.extend(self.check_hierarchy(df, sheet))

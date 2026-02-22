@@ -15,10 +15,6 @@ validation_rules:
     enabled: true
     severity: "error"
 
-  user_mapping:
-    enabled: true
-    severity: "warning"
-
   no_missing_entries:
     enabled: true
     severity: "error"
