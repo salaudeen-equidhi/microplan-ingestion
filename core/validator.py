@@ -9,7 +9,9 @@ from openpyxl.styles import PatternFill, Font, Alignment
 
 class Validator:
 
-    def __init__(self, config_path='validation_config.yaml'):
+    def __init__(self, config_path=None):
+        if config_path is None:
+            config_path = os.path.join(os.path.dirname(__file__), 'validation_config.yaml')
         self.config = self._load_config(config_path)
 
         self.boundary_columns = []
