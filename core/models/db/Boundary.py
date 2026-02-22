@@ -2,8 +2,6 @@ import datetime
 
 from sqlalchemy import Column, String, Integer, DateTime
 
-import constants
-from constants import CHECKLIST_TARGETS
 from models.db.Base import Base
 
 class Boundary(Base):
@@ -48,7 +46,6 @@ class Boundary(Base):
     total_13 = Column(Integer, default=0)
     total_14 = Column(Integer, default=0)
     total_15 = Column(Integer, default=0)
-    checklist_target = Column(String, default=CHECKLIST_TARGETS, nullable=False)
     insert_time = Column(DateTime, nullable=False, default=datetime.datetime.now())
     update_time = Column(DateTime, nullable=False, default=datetime.datetime.now(), onupdate=datetime.datetime.now())
     filename = Column(String, default=None, nullable=True)

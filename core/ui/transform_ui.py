@@ -94,10 +94,6 @@ def build_transform_ui(ctx):
         value=1, description='Facility Header Row:',
         style=style, layout=widgets.Layout(width='250px'))
 
-    # Checklist upload (optional)
-    w_checklist = widgets.FileUpload(
-        accept='.xlsx,.xls', multiple=False, description='Checklist File')
-
     btn_transform = widgets.Button(
         description='TRANSFORM', button_style='success',
         layout=widgets.Layout(width='150px', height='40px'),
@@ -283,23 +279,10 @@ def build_transform_ui(ctx):
                 # Import and run
                 from transform import run_transform
 
-                checklist_path = None
-                if w_checklist.value:
-                    files = w_checklist.value
-                    info = files[0] if isinstance(files, tuple) else list(files.values())[0]
-                    name = info.name if hasattr(info, 'name') else info['name']
-                    content = info.content if hasattr(info, 'content') else info['content']
-                    checklist_path = os.path.join(UPLOADS_DIR, name)
-                    with open(checklist_path, 'wb') as f:
-                        f.write(content)
-                elif os.path.exists('checklist_targets.xlsx'):
-                    checklist_path = 'checklist_targets.xlsx'
-
                 log_progress("Starting data transformation...")
                 result = run_transform(
                     boundary_file=file_state['boundary_file'],
                     facility_file=file_state['facility_file'],
-                    checklist_file=checklist_path,
                     progress=log_progress,
                 )
 
@@ -353,7 +336,6 @@ def build_transform_ui(ctx):
         w_campaign_start, w_campaign_end,
         widgets.HTML("<b>Excel Row Settings:</b>"),
         w_boundary_start_row, w_facility_start_row,
-        widgets.HTML("<b>Optional Checklist File:</b>"), w_checklist,
         widgets.HTML("<br>"),
         btn_transform,
         widgets.HTML("<b>Progress:</b>"),

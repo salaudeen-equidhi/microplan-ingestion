@@ -7,7 +7,6 @@ START_BOUNDARIES_ROW = 1
 BOUNDARY_1_CODE = "mz"
 DB_CONNECTION_STRING = "sqlite:///output/microplan.db"
 
-CHECKLIST_TARGETS = "{\"fields\":[]}"
 PROJECT_NAME = "IRS"
 LAST_BOUNDARY = "BOUNDARY_7"
 

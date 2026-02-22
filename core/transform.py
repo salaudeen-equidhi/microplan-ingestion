@@ -13,7 +13,7 @@ from models.db import Base, Boundary, Facility
 from utils.common import cleanup
 
 
-def run_transform(boundary_file, facility_file, checklist_file=None, progress=None):
+def run_transform(boundary_file, facility_file, progress=None):
     def log(msg):
         if progress:
             progress(msg)
@@ -27,26 +27,6 @@ def run_transform(boundary_file, facility_file, checklist_file=None, progress=No
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     log("Database ready.")
-
-    # load checklist targets if provided
-    checklist_targets_json = {}
-    if checklist_file and os.path.exists(checklist_file):
-        log("Loading checklist targets...")
-        wb = openpyxl.load_workbook(checklist_file)
-        sheet = wb.active
-        header = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
-        col_names = header[1:]
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            bname, *tgts = row
-            if not bname:
-                continue
-            key = cleanup(bname)
-            if key not in checklist_targets_json:
-                checklist_targets_json[key] = {"targets": []}
-            for cn, tv in zip(col_names, tgts):
-                if cn:
-                    checklist_targets_json[key]["targets"].append(
-                        {"beneficiaryType": cn, "totalNo": tv, "targetNo": tv})
 
     max_level = max(info["level"] for info in constants.BOUNDARIES.values())
 
@@ -179,8 +159,7 @@ if __name__ == '__main__':
             format="%(asctime)s : %(levelname)s : %(message)s",
             datefmt="%Y-%m-%d %I:%M:%S%p")
 
-    cl = "checklist_targets.xlsx" if os.path.exists("checklist_targets.xlsx") else None
-    result = run_transform(args.boundary_path, args.hf_path, cl)
+    result = run_transform(args.boundary_path, args.hf_path)
     print(f"Done! DB: {result['db_path']}, "
           f"Boundaries: {result['boundaries_count']}, "
           f"Facilities: {result['facilities_count']}")
