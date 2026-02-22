@@ -187,7 +187,7 @@ def build_facilityingest_ui(ctx):
     )
 
     tenant_input = widgets.Text(
-        value='',
+        value=config_state.get('tenant_id', ''),
         description='Tenant ID:',
         placeholder='e.g. bi',
         style={'description_width': '120px'},

@@ -253,6 +253,14 @@ def build_config_ui(ctx):
 
     num_targets.observe(update_targets, names='value')
 
+    # ── Section D: Tenant ID ──
+    tenant_input = widgets.Text(
+        value=config_state.get('tenant_id', ''),
+        placeholder='e.g. bi',
+        description='Tenant ID:',
+        style={'description_width': '100px'},
+        layout=widgets.Layout(width='300px'))
+
     # ── Save button ──
     btn_save = widgets.Button(
         description='Save Config', button_style='success',
@@ -288,6 +296,7 @@ def build_config_ui(ctx):
                 'level_columns': levels, 'target_columns': targets, 'num_targets': len(targets),
                 'facility_col': facility_col.value or '', 'district_col': district_col.value or '',
                 'state_col': state_col.value or '', 'alignment_mapping': mapping,
+                'tenant_id': tenant_input.value.strip(),
                 'configured': True
             })
 
@@ -322,5 +331,7 @@ def build_config_ui(ctx):
         widgets.HBox([facility_col, facility_map]),
         widgets.HBox([district_col, district_map]),
         widgets.HBox([state_col, state_map]),
+        widgets.HTML("<h3>Step 4: Tenant ID</h3>"),
+        tenant_input,
         btn_save, out_config
     ])

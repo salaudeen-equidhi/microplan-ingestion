@@ -9,6 +9,7 @@ def build_boundaryingest_ui(ctx):
     OUTPUT_DIR = ctx['OUTPUT_DIR']
     UPLOADS_DIR = ctx['UPLOADS_DIR']
     ERROR_DIR = ctx['ERROR_DIR']
+    config_state = ctx['config_state']
 
     api_url_input = widgets.Text(
         value='http://hcm-moz-impl.egov:8080/hcm-moz-impl/v1/dhis2/OU/ingest?source=EXCEL',
@@ -18,7 +19,7 @@ def build_boundaryingest_ui(ctx):
     )
 
     tenant_input = widgets.Text(
-        value='',
+        value=config_state.get('tenant_id', ''),
         description='Tenant ID:',
         placeholder='e.g. bi',
         style={'description_width': '120px'},
