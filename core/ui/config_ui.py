@@ -2,7 +2,7 @@ import os
 import glob
 import ipywidgets as widgets
 from IPython.display import display, HTML, clear_output
-from utils.common import detect_columns, CASING_OPTIONS, set_casing_mode
+from utils.common import detect_columns, classify_columns, CASING_OPTIONS, set_casing_mode
 
 
 def build_config_ui(ctx):
@@ -149,6 +149,27 @@ def build_config_ui(ctx):
             if old in facility_headers:
                 dd.value = old
 
+    def _auto_populate_levels_and_targets(detected_levels, detected_targets):
+        """Auto-create level and target dropdowns with pre-selected values."""
+        opts = _make_options(boundary_headers)
+
+        # Rebuild level dropdowns
+        level_boxes.clear()
+        for i, col_name in enumerate(detected_levels):
+            box = widgets.Dropdown(
+                options=opts, value=col_name, description=f'Level {i+1}:',
+                style={'description_width': '80px'}, layout=widgets.Layout(width='400px'))
+            level_boxes.append(box)
+        level_container.children = list(level_boxes)
+
+        # Set num_targets — this fires update_targets observer
+        num_targets.value = len(detected_targets)
+
+        # After observer creates target_boxes, set their values
+        for i, col_name in enumerate(detected_targets):
+            if i < len(target_boxes):
+                target_boxes[i].value = col_name
+
     def on_detect(btn):
         with out_detect:
             clear_output(wait=True)
@@ -171,12 +192,17 @@ def build_config_ui(ctx):
 
             boundary_headers.clear()
             facility_headers.clear()
+            detected_levels = []
+            detected_targets = []
 
             if b_path and os.path.exists(b_path):
                 try:
                     b_map = detect_columns(b_path, hr)
                     boundary_headers.extend(b_map.keys())
-                    msgs.append(f"Boundary: {len(boundary_headers)} headers detected")
+                    detected_levels, detected_targets = classify_columns(b_path, hr)
+                    msgs.append(
+                        f"Boundary: {len(boundary_headers)} headers "
+                        f"({len(detected_levels)} levels, {len(detected_targets)} targets)")
                 except Exception as e:
                     msgs.append(f"<span style='color:red'>Boundary error: {e}</span>")
             elif b_path:
@@ -194,6 +220,10 @@ def build_config_ui(ctx):
 
             _refresh_boundary_dropdowns()
             _refresh_facility_dropdowns()
+
+            # Auto-populate levels and targets if detected
+            if detected_levels or detected_targets:
+                _auto_populate_levels_and_targets(detected_levels, detected_targets)
 
             display(HTML(
                 f"<div style='padding:8px; background:#d4edda; border-radius:4px;'>"
