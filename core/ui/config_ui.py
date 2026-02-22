@@ -2,7 +2,7 @@ import os
 import glob
 import ipywidgets as widgets
 from IPython.display import display, HTML, clear_output
-from utils.common import detect_columns, classify_columns, CASING_OPTIONS, set_casing_mode
+from utils.common import detect_columns, classify_columns
 
 
 def build_config_ui(ctx):
@@ -253,14 +253,6 @@ def build_config_ui(ctx):
 
     num_targets.observe(update_targets, names='value')
 
-    # ── Section D: Name Casing ──
-    casing_dropdown = widgets.Dropdown(
-        options=[(label, key) for key, label in CASING_OPTIONS.items()],
-        value='none',
-        description='Name Casing:',
-        style={'description_width': '100px'},
-        layout=widgets.Layout(width='400px'))
-
     # ── Save button ──
     btn_save = widgets.Button(
         description='Save Config', button_style='success',
@@ -292,13 +284,11 @@ def build_config_ui(ctx):
             if state_col.value and state_map.value:
                 mapping[state_col.value] = state_map.value
 
-            set_casing_mode(casing_dropdown.value)
-
             config_state.update({
                 'level_columns': levels, 'target_columns': targets, 'num_targets': len(targets),
                 'facility_col': facility_col.value or '', 'district_col': district_col.value or '',
                 'state_col': state_col.value or '', 'alignment_mapping': mapping,
-                'casing_mode': casing_dropdown.value, 'configured': True
+                'configured': True
             })
 
             validator.set_columns(
@@ -307,10 +297,9 @@ def build_config_ui(ctx):
                 target_cols=targets, num_targets=len(targets))
 
             map_str = ', '.join([f'{k}\u2192{v}' for k, v in mapping.items()])
-            casing_label = CASING_OPTIONS.get(casing_dropdown.value, 'none')
             display(HTML(f"""<div style='padding:10px; background:#d4edda; border-radius:5px;'>
                 <b>Saved!</b><br>Levels: {', '.join(levels)}<br>Targets: {', '.join(targets) or 'none'}
-                <br>Mapping: {map_str or 'none'}<br>Name casing: {casing_label}</div>"""))
+                <br>Mapping: {map_str or 'none'}</div>"""))
 
     btn_save.on_click(save_config)
 
@@ -333,8 +322,5 @@ def build_config_ui(ctx):
         widgets.HBox([facility_col, facility_map]),
         widgets.HBox([district_col, district_map]),
         widgets.HBox([state_col, state_map]),
-        widgets.HTML("<h3>Step 4: Name Casing</h3>"),
-        widgets.HTML("<em>Auto-normalize all boundary and facility names during transform</em>"),
-        casing_dropdown,
         btn_save, out_config
     ])

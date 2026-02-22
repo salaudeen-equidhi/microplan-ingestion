@@ -20,12 +20,17 @@ for folder in [UPLOADS_DIR, ERROR_DIR]:
 
 validator = Validator()
 
+# Apply name casing from config (default: lower)
+from utils.common import set_casing_mode
+casing_mode = validator.config.get('name_casing', 'lower')
+set_casing_mode(casing_mode)
+
 # Shared context for all UI cells
 ctx = {
     'config_state': {
         'level_columns': [], 'target_columns': [], 'num_targets': 0,
         'facility_col': '', 'district_col': '', 'state_col': '',
-        'alignment_mapping': {}, 'configured': False
+        'alignment_mapping': {}, 'casing_mode': casing_mode, 'configured': False
     },
     'file_state': {'boundary_file': None, 'facility_file': None},
     'validator': validator,

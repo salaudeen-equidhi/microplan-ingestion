@@ -34,3 +34,7 @@ validation_rules:
     auto_detect_root: true
     root_threshold_rows: 5
     root_threshold_percent: 0.1
+
+# Name casing applied to all boundary and facility names during transform.
+# Options: none, title, upper, lower, sentence
+name_casing: "lower"
