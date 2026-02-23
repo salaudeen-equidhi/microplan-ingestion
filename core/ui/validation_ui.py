@@ -173,8 +173,15 @@ def build_validation_ui(ctx):
                     if f_label in validator.row_status:
                         for idx, info in validator.row_status[f_label].items():
                             if idx in df.index:
-                                df.loc[idx, 'VALIDATION_STATUS'] = info['status']
-                                df.loc[idx, 'VALIDATION_ERRORS'] = '; '.join(info['errors'])
+                                # Only upgrade status to FAIL, never downgrade FAIL to PASS
+                                if info['status'] == 'FAIL':
+                                    df.loc[idx, 'VALIDATION_STATUS'] = 'FAIL'
+                                existing_errors = str(df.loc[idx, 'VALIDATION_ERRORS']).strip()
+                                new_errors = '; '.join(info['errors'])
+                                if existing_errors and existing_errors != 'nan' and new_errors:
+                                    df.loc[idx, 'VALIDATION_ERRORS'] = existing_errors + '; ' + new_errors
+                                elif new_errors:
+                                    df.loc[idx, 'VALIDATION_ERRORS'] = new_errors
 
         output_files = validator.save_validated_files(ERROR_DIR)
         display_results(all_issues, summary)
