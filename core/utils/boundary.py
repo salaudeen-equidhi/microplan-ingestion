@@ -16,7 +16,8 @@ def upsert_boundary(boundary_name, boundary_enum, previous_boundary, session,
     boundary = (
         session.query(Boundary)
         .filter(func.lower(Boundary.name) == boundary_name.strip().lower())
-        .filter_by(parent_code=previous_boundary, boundary_type=boundary_type)
+        .filter(func.lower(Boundary.parent_code) == str(previous_boundary).strip().lower())
+        .filter_by(boundary_type=boundary_type)
         .first()
     )
 
@@ -64,7 +65,8 @@ def upsert_boundary_2(state_name, state_code, boundary_name, session, filename=N
     state_boundary = (
         session.query(Boundary)
         .filter(func.lower(Boundary.name) == state_name.strip().lower())
-        .filter_by(code=state_code, boundary_type=boundary_type)
+        .filter(func.lower(Boundary.code) == str(state_code).strip().lower())
+        .filter_by(boundary_type=boundary_type)
         .first()
     )
 

@@ -35,26 +35,29 @@ def create_health_facility(facility_name, mapping_boundary, session, facility_ty
         # walk up to build parent chain
         ancestors = []
         code = boundary.parent_code
-        while code and code != constants.BOUNDARY_1_CODE:
+        while code and code.strip().lower() != constants.BOUNDARY_1_CODE.strip().lower():
             ancestors.append(code)
-            parent = session.query(Boundary).filter_by(code=code).first()
+            parent = session.query(Boundary).filter(
+                func.lower(Boundary.code) == code.strip().lower()
+            ).first()
             code = parent.parent_code if parent else None
         parent_chain = ",".join(ancestors)
 
         parent_name = None
         if boundary.parent_code:
-            parent = session.query(Boundary).filter_by(
-                code=boundary.parent_code).first()
+            parent = session.query(Boundary).filter(
+                func.lower(Boundary.code) == boundary.parent_code.strip().lower()
+            ).first()
             parent_name = parent.name if parent else None
 
         existing = (
             session.query(Facility)
-            .join(Boundary, Facility.boundary_code == Boundary.code)
+            .join(Boundary, func.lower(Facility.boundary_code) == func.lower(Boundary.code))
             .filter(
                 func.replace(func.lower(Facility.facility_name), " ", "") ==
                 lookup_name.lower().replace(" ", "")
             )
-            .filter(Facility.boundary_code == boundary_code)
+            .filter(func.lower(Facility.boundary_code) == boundary_code.strip().lower())
             .filter(Facility.administrative_area == parent_name)
             .filter(Boundary.boundary_level == facility_level)
             .first()
@@ -95,7 +98,7 @@ def update_health_facility(facility_name, district_boundary, session, target=0, 
     if district_boundary is not None:
         facility = (session.query(Facility)
                     .filter(func.lower(Facility.facility_name) == facility_name.lower())
-                    .filter_by(parent_code=district_boundary.code).first())
+                    .filter(func.lower(Facility.parent_code) == district_boundary.code.strip().lower()).first())
         if facility is not None:
             if target != 0:
                 facility.target = target

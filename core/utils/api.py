@@ -1,4 +1,8 @@
 import json
+import os
+from datetime import datetime
+
+import pandas as pd
 import requests
 
 
@@ -124,4 +128,156 @@ def ingest_facility(api_url, tenant_id, project_type_id, csv_file_path):
         "success": resp.ok,
         "status_code": resp.status_code,
         "response": resp.text,
+    }
+
+
+def search_single_boundary(search_url, token, tenant_id, code, timeout=30):
+    """Search for a single boundary code. Returns True if found, False otherwise."""
+    payload = {
+        "RequestInfo": {
+            "apiId": "stribi",
+            "ver": "stribi",
+            "ts": 0,
+            "action": "stribi",
+            "did": "stribi",
+            "key": "stribi",
+            "msgId": "stribi",
+            "requesterId": "stribi",
+            "authToken": token,
+            "userInfo": {"tenantId": tenant_id, "id": 0, "uuid": "stribi"},
+        },
+        "Boundary": [{"tenantId": tenant_id, "code": code, "geometry": None}],
+    }
+    try:
+        resp = requests.post(search_url, json=payload, timeout=timeout)
+        if not resp.ok:
+            return False
+        data = resp.json() if resp.text.strip() else {}
+        boundaries = data.get("Boundary", [])
+        code_lower = code.strip().lower()
+        return any(
+            isinstance(b, dict) and str(b.get("code", "")).strip().lower() == code_lower
+            for b in boundaries
+        )
+    except Exception:
+        return False
+
+
+def verify_boundary_codes(search_url, token, tenant_id, codes, progress_cb=None):
+    """
+    Verify a list of boundary codes one at a time.
+
+    Args:
+        progress_cb: optional callback(current_index, total, code, found)
+            called after each code is checked.
+
+    Returns dict with keys: found_codes (set), not_found_codes (set),
+        errors (int), total (int).
+    """
+    found_codes = set()
+    not_found_codes = set()
+    total = len(codes)
+
+    for i, code in enumerate(codes):
+        found = search_single_boundary(search_url, token, tenant_id, code)
+        if found:
+            found_codes.add(code)
+        else:
+            not_found_codes.add(code)
+        if progress_cb:
+            progress_cb(i + 1, total, code, found)
+
+    return {
+        "found_codes": found_codes,
+        "not_found_codes": not_found_codes,
+        "total": total,
+    }
+
+
+def _read_csv_with_fallback(csv_path):
+    encodings = ["utf-8-sig", "utf-8", "latin-1"]
+    last_error = None
+    for encoding in encodings:
+        try:
+            return pd.read_csv(csv_path, dtype=str, keep_default_na=False, encoding=encoding)
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"Could not read CSV {csv_path}: {last_error}")
+
+
+def detect_code_column(df):
+    if "code" in df.columns:
+        return "code"
+
+    lowered = {str(c).strip().lower(): c for c in df.columns}
+    for candidate in ["boundarycode", "boundary_code", "code"]:
+        if candidate in lowered:
+            return lowered[candidate]
+
+    for col in df.columns:
+        name = str(col).strip().lower()
+        if "code" in name:
+            return col
+    return None
+
+
+def read_boundary_codes_from_csv(csv_path, code_column=None):
+    df = _read_csv_with_fallback(csv_path)
+    selected_code_col = code_column or detect_code_column(df)
+    if not selected_code_col:
+        raise ValueError(
+            f'No boundary code column found in "{os.path.basename(csv_path)}". '
+            "Expected a column like code/boundary_code."
+        )
+
+    codes = [
+        str(v).strip() for v in df[selected_code_col].tolist()
+        if str(v).strip()
+    ]
+    unique_codes = list(dict.fromkeys(codes))
+    return selected_code_col, unique_codes
+
+
+def generate_boundary_ingestion_summary(
+    csv_path,
+    found_codes,
+    output_dir,
+    code_column=None,
+    status_column="INGESTION_STATUS",
+    deduplicate_by_code=True,
+):
+    df = _read_csv_with_fallback(csv_path)
+    selected_code_col = code_column or detect_code_column(df)
+    if not selected_code_col:
+        raise ValueError(
+            f'No boundary code column found in "{os.path.basename(csv_path)}". '
+            "Expected a column like code/boundary_code."
+        )
+
+    normalized_found = {str(code).strip().lower() for code in found_codes if str(code).strip()}
+    code_values = df[selected_code_col].astype(str).str.strip()
+    if deduplicate_by_code:
+        df[selected_code_col] = code_values
+        df = df[df[selected_code_col] != ""].drop_duplicates(subset=[selected_code_col], keep="first")
+        code_values = df[selected_code_col].astype(str).str.strip()
+
+    df[status_column] = code_values.apply(
+        lambda code: "FOUND" if code and code.lower() in normalized_found else "NOT_FOUND"
+    )
+
+    os.makedirs(output_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_name = os.path.splitext(os.path.basename(csv_path))[0]
+    output_path = os.path.join(output_dir, f"{base_name}_boundary_summary_{ts}.xlsx")
+    df.to_excel(output_path, index=False)
+
+    total_rows = len(df.index)
+    found_rows = int((df[status_column] == "FOUND").sum())
+    not_found_rows = total_rows - found_rows
+    return {
+        "output_path": output_path,
+        "code_column": selected_code_col,
+        "total_rows": total_rows,
+        "found_rows": found_rows,
+        "not_found_rows": not_found_rows,
     }

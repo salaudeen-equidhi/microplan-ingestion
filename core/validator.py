@@ -235,21 +235,22 @@ class Validator:
 
             if parent_cols:
                 try:
-                    df['_parent_key'] = df[parent_cols].astype(str).agg('|'.join, axis=1)
+                    df['_parent_key'] = df[parent_cols].astype(str).agg('|'.join, axis=1).str.lower()
                     for parent_key, group in df.groupby('_parent_key')[last_col]:
                         vals = group.dropna().astype(str).str.strip()
                         seen = {}
                         for idx, val in vals.items():
-                            if val in seen:
+                            val_lower = val.lower()
+                            if val_lower in seen:
                                 parent_display = ' > '.join([str(df.loc[idx, c]) for c in parent_cols])
                                 issues.append({
                                     'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
                                     'column': last_col, 'row': idx + 2, 'value': val[:40],
-                                    'message': f'Duplicate under "{parent_display}" (also row {seen[val] + 2})'
+                                    'message': f'Duplicate under "{parent_display}" (also row {seen[val_lower] + 2})'
                                 })
                                 if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate {last_col} "{val}"')
                             else:
-                                seen[val] = idx
+                                seen[val_lower] = idx
                     df.drop('_parent_key', axis=1, inplace=True, errors='ignore')
                 except:
                     pass
@@ -257,15 +258,16 @@ class Validator:
                 vals = df[last_col].dropna().astype(str).str.strip()
                 seen = {}
                 for idx, val in vals.items():
-                    if val in seen:
+                    val_lower = val.lower()
+                    if val_lower in seen:
                         issues.append({
                             'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
                             'column': last_col, 'row': idx + 2, 'value': val[:40],
-                            'message': f'Duplicate (also row {seen[val] + 2})'
+                            'message': f'Duplicate (also row {seen[val_lower] + 2})'
                         })
                         if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate {last_col}: {val}')
                     else:
-                        seen[val] = idx
+                        seen[val_lower] = idx
 
         for fac_col in facility_cols:
             if is_boundary_file and boundary_cols:
@@ -275,30 +277,32 @@ class Validator:
                         vals = group.dropna().astype(str).str.strip()
                         seen = {}
                         for idx, val in vals.items():
-                            if val in seen:
+                            val_lower = val.lower()
+                            if val_lower in seen:
                                 issues.append({
                                     'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
                                     'column': fac_col, 'row': idx + 2, 'value': val[:40],
-                                    'message': f'Duplicate facility under "{parent_val}" (also row {seen[val] + 2})'
+                                    'message': f'Duplicate facility under "{parent_val}" (also row {seen[val_lower] + 2})'
                                 })
                                 if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
                             else:
-                                seen[val] = idx
+                                seen[val_lower] = idx
                 except:
                     pass
             else:
                 vals = df[fac_col].dropna().astype(str).str.strip()
                 seen = {}
                 for idx, val in vals.items():
-                    if val in seen:
+                    val_lower = val.lower()
+                    if val_lower in seen:
                         issues.append({
                             'rule': 'Unique Names', 'severity': sev, 'sheet': sheet,
                             'column': fac_col, 'row': idx + 2, 'value': val[:40],
-                            'message': f'Duplicate facility (also row {seen[val] + 2})'
+                            'message': f'Duplicate facility (also row {seen[val_lower] + 2})'
                         })
                         if sev == 'error': self.mark_row_error(sheet, idx, f'Duplicate facility "{val}"')
                     else:
-                        seen[val] = idx
+                        seen[val_lower] = idx
         return issues
 
     def check_missing(self, df, sheet):
@@ -369,22 +373,22 @@ class Validator:
 
         valid_parents = set()
         if code_col:
-            valid_parents.update(df[code_col].dropna().astype(str).str.strip().unique())
+            valid_parents.update(df[code_col].dropna().astype(str).str.strip().str.lower().unique())
         for col in boundary_cols:
-            valid_parents.update(df[col].dropna().astype(str).str.strip().unique())
+            valid_parents.update(df[col].dropna().astype(str).str.strip().str.lower().unique())
 
         detected_roots = set()
         if self.hierarchy_auto_detect_root:
-            parent_counts = df[parent_col].dropna().astype(str).str.strip().value_counts()
+            parent_counts = df[parent_col].dropna().astype(str).str.strip().str.lower().value_counts()
             for parent_val, count in parent_counts.items():
                 if parent_val not in valid_parents:
-                    if count > self.hierarchy_root_threshold_rows or count > len(df) * self.hierarchy_root_threshold_percent:
+                    if count > self.hierarchy_root_threshold_rows and count > len(df) * self.hierarchy_root_threshold_percent:
                         detected_roots.add(parent_val)
 
         sev = self.rules_severity['hierarchy_check']
         for idx, parent_val in df[parent_col].items():
             if pd.notna(parent_val):
-                parent_str = str(parent_val).strip()
+                parent_str = str(parent_val).strip().lower()
                 if parent_str and parent_str not in valid_parents and parent_str not in detected_roots:
                     issues.append({
                         'rule': 'Hierarchy Check', 'severity': sev, 'sheet': sheet,
