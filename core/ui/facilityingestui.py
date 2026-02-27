@@ -54,6 +54,7 @@ def build_facilityingest_ui(ctx):
         patterns = [
             os.path.join(UPLOADS_DIR, '*.csv'),
             os.path.join(OUTPUT_DIR, 'csv_export_*', '*.csv'),
+            os.path.join(OUTPUT_DIR, 'facility_build', '*.csv'),
         ]
         files = []
         for p in patterns:
