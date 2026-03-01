@@ -131,8 +131,13 @@ def ingest_facility(api_url, tenant_id, project_type_id, csv_file_path):
     }
 
 
-def search_single_boundary(search_url, token, tenant_id, code, timeout=30):
+DEFAULT_AUTH_TOKEN = '3a375f80-36ce-4b10-9437-97f7c74dc6dc'
+
+
+def search_single_boundary(search_url, token=None, tenant_id=None, code=None, timeout=30):
     """Search for a single boundary code. Returns True if found, False otherwise."""
+    if token is None:
+        token = DEFAULT_AUTH_TOKEN
     payload = {
         "RequestInfo": {
             "apiId": "stribi",
@@ -163,7 +168,7 @@ def search_single_boundary(search_url, token, tenant_id, code, timeout=30):
         return False
 
 
-def verify_boundary_codes(search_url, token, tenant_id, codes, progress_cb=None):
+def verify_boundary_codes(search_url, token=None, tenant_id=None, codes=None, progress_cb=None):
     """
     Verify a list of boundary codes one at a time.
 
@@ -174,6 +179,8 @@ def verify_boundary_codes(search_url, token, tenant_id, codes, progress_cb=None)
     Returns dict with keys: found_codes (set), not_found_codes (set),
         errors (int), total (int).
     """
+    if token is None:
+        token = DEFAULT_AUTH_TOKEN
     found_codes = set()
     not_found_codes = set()
     total = len(codes)

@@ -17,7 +17,6 @@ def build_boundaryingest_ui(ctx):
     ERROR_DIR = ctx['ERROR_DIR']
     config_state = ctx['config_state']
     default_tenant = config_state.get('tenant_id', 'bi') or 'bi'
-    default_auth_token = '3a375f80-36ce-4b10-9437-97f7c74dc6dc'
 
     api_url_input = widgets.Text(
         value='http://hcm-moz-impl.egov:8080/hcm-moz-impl/v1/dhis2/OU/ingest?source=EXCEL',
@@ -127,14 +126,6 @@ def build_boundaryingest_ui(ctx):
         layout=widgets.Layout(width='600px'),
     )
 
-    token_input = widgets.Text(
-        value=default_auth_token,
-        description='Auth Token:',
-        placeholder='boundary search authToken',
-        style={'description_width': '120px'},
-        layout=widgets.Layout(width='600px'),
-    )
-
     report_dir = os.path.join(OUTPUT_DIR, 'boundary_reports')
     verify_btn = widgets.Button(
         description='Generate Boundary Summary',
@@ -159,14 +150,10 @@ def build_boundaryingest_ui(ctx):
         with verify_output:
             search_url = search_url_input.value.strip()
             tenant = tenant_input.value.strip() or default_tenant
-            token = token_input.value.strip()
             csv_path = file_dropdown.value
 
             if not search_url:
                 display(HTML('<p style="color:red">Please enter the boundary search URL.</p>'))
-                return
-            if not token:
-                display(HTML('<p style="color:red">Please enter the boundary search auth token.</p>'))
                 return
             if not csv_path:
                 display(HTML('<p style="color:red">Please select the boundary CSV used for ingestion.</p>'))
@@ -196,7 +183,7 @@ def build_boundaryingest_ui(ctx):
                     )
 
                 result = verify_boundary_codes(
-                    search_url, token, tenant, unique_codes, progress_cb=on_progress,
+                    search_url, tenant_id=tenant, codes=unique_codes, progress_cb=on_progress,
                 )
 
                 progress_bar.bar_style = 'success'
@@ -271,7 +258,6 @@ def build_boundaryingest_ui(ctx):
         widgets.HTML('<hr/>'),
         widgets.HTML('<h4>B. Verify Ingestion + Download Summary</h4>'),
         search_url_input,
-        token_input,
         verify_btn,
         progress_box,
         verify_output,
