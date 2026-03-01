@@ -14,19 +14,20 @@ from utils.common import cleanup
 
 
 def run_transform(boundary_file, facility_file, progress=None):
-    def log(msg):
+    """
+    progress callback signature: progress(current, total, message)
+    """
+    def report(current, total, msg):
         if progress:
-            progress(msg)
+            progress(current, total, msg)
 
     db_url = constants.DB_CONNECTION_STRING
-    log("Connecting to database...")
 
     engine = create_engine(db_url)
     Session = sessionmaker(bind=engine)
     session = Session()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    log("Database ready.")
 
     max_level = max(info["level"] for info in constants.BOUNDARIES.values())
 
@@ -42,12 +43,38 @@ def run_transform(boundary_file, facility_file, progress=None):
         b_files = [f.path for f in os.scandir(boundary_file)
                    if f.is_file() and utils.common.is_excel(f)]
 
+    # count total rows across all boundary sheets for progress
+    total_boundary_rows = 0
+    total_facility_rows = 0
+
+    for fpath in b_files:
+        wb_count = openpyxl.load_workbook(fpath, data_only=True, read_only=True)
+        for ws in utils.common.get_visible_sheets(wb_count.worksheets):
+            total_boundary_rows += max(0, ws.max_row - constants.START_BOUNDARIES_ROW)
+        wb_count.close()
+
+    # get facility files
+    if os.path.isfile(facility_file):
+        f_files = [facility_file]
+    else:
+        f_files = [f.path for f in os.scandir(facility_file)
+                   if f.is_file() and utils.common.is_excel(f)]
+
+    for fpath in f_files:
+        wb_count = openpyxl.load_workbook(fpath, data_only=True, read_only=True)
+        for ws in utils.common.get_visible_sheets(wb_count.worksheets):
+            total_facility_rows += max(0, ws.max_row - constants.FACILITY_START_ROW)
+        wb_count.close()
+
+    grand_total = total_boundary_rows + total_facility_rows
+    done = 0
+
+    report(0, grand_total, "Processing boundaries...")
+
     # process boundaries
     for fpath in b_files:
-        log(f"Loading boundary file: {os.path.basename(fpath)}...")
         wb = openpyxl.load_workbook(fpath, data_only=True)
         sheets = utils.common.get_visible_sheets(wb.worksheets)
-        log(f"Found {len(sheets)} sheet(s). Creating boundaries...")
 
         b2 = utils.boundary.upsert_boundary_2(
             constants.BOUNDARY_2_NAME, constants.BOUNDARY_2_CODE,
@@ -56,15 +83,12 @@ def run_transform(boundary_file, facility_file, progress=None):
 
         for si, ws in enumerate(sheets, 1):
             last_row = ws.max_row  # snapshot to avoid openpyxl expanding
-            total_rows = last_row - constants.START_BOUNDARIES_ROW
-            log(f"Processing sheet {si}/{len(sheets)}: {ws.title} ({total_rows} rows)...")
             row = constants.START_BOUNDARIES_ROW
-            processed = 0
             while row < last_row + 1:
                 row += 1
-                processed += 1
-                if processed % 100 == 0:
-                    log(f"  Boundaries: {processed}/{total_rows} rows processed...")
+                done += 1
+                if done % 50 == 0 or done == grand_total:
+                    report(done, grand_total, f"Boundaries: {done}/{grand_total} rows")
                 targets = {}
 
                 # grab targets at deepest level
@@ -88,27 +112,18 @@ def run_transform(boundary_file, facility_file, progress=None):
                                 session, btype, str(fpath), targets)
                             boundaries[bk] = b
 
-    # get facility files
-    if os.path.isfile(facility_file):
-        f_files = [facility_file]
-    else:
-        f_files = [f.path for f in os.scandir(facility_file)
-                   if f.is_file() and utils.common.is_excel(f)]
+    report(done, grand_total, "Processing facilities...")
 
     # process facilities
     for fpath in f_files:
-        log(f"Loading facility file: {os.path.basename(fpath)}...")
         wb = openpyxl.load_workbook(fpath, data_only=True)
         sheets = utils.common.get_visible_sheets(wb.worksheets)
-        log(f"Found {len(sheets)} sheet(s). Creating facilities...")
 
         for ws in sheets:
-            total_fac_rows = ws.max_row - constants.FACILITY_START_ROW
-            fac_processed = 0
             for row in range(constants.FACILITY_START_ROW + 1, ws.max_row + 1):
-                fac_processed += 1
-                if fac_processed % 100 == 0:
-                    log(f"  Facilities: {fac_processed}/{total_fac_rows} rows processed...")
+                done += 1
+                if done % 50 == 0 or done == grand_total:
+                    report(done, grand_total, f"Facilities: {done}/{grand_total} rows")
                 cells = ws[f"A{row}:F{row}"]
                 vals = [c.value for c in cells[0]]
                 fac_name = vals[0]
@@ -124,11 +139,10 @@ def run_transform(boundary_file, facility_file, progress=None):
                     target=0)
 
     # wrap up
-    log("Finalizing database...")
+    report(grand_total, grand_total, "Finalizing...")
     b_count = session.query(Boundary).count()
     f_count = session.query(Facility).count()
     db_path = db_url.replace("sqlite:///", "")
-    log(f"Done! {b_count} boundaries, {f_count} facilities created.")
 
     session.close()
     engine.dispose()

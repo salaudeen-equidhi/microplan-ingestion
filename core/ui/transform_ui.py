@@ -2,7 +2,6 @@ import importlib
 import os
 import sys
 import base64
-import time
 import datetime
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -21,13 +20,26 @@ def build_transform_ui(ctx):
     out_transform = widgets.Output()
     out_transform_status = widgets.Output()
 
-    # Live progress log widget
-    progress_log = widgets.HTML(value='')
+    # Progress bar + label
+    progress_bar = widgets.IntProgress(
+        value=0, min=0, max=1,
+        description='',
+        bar_style='info',
+        style={'description_width': '0px'},
+        layout=widgets.Layout(width='500px', visibility='hidden'),
+    )
+    progress_label = widgets.HTML(value='')
+    progress_box = widgets.HBox([progress_bar, progress_label])
 
-    def log_progress(msg):
-        ts = time.strftime('%H:%M:%S')
-        current = progress_log.value
-        progress_log.value = current + f"<div style='font-family:monospace; font-size:12px; color:#555;'>[{ts}] {msg}</div>"
+    def update_progress(current, total, msg):
+        progress_bar.max = max(total, 1)
+        progress_bar.value = current
+        progress_bar.layout.visibility = 'visible'
+        pct = int(current / max(total, 1) * 100)
+        progress_label.value = (
+            f"<span style='margin-left:10px; font-size:13px;'>"
+            f"{msg} ({pct}%)</span>"
+        )
 
     # Gate check
     pass_count, fail_count = validator.get_stats()
@@ -43,26 +55,7 @@ def build_transform_ui(ctx):
                 "</div>"
             ))
 
-    # Auto-populated info (read-only display)
     info_html = "<h3>Transformation Configuration</h3>"
-    if config_state.get('configured'):
-        levels = config_state.get('level_columns', [])
-        targets = config_state.get('target_columns', [])
-        fac = config_state.get('facility_col', '')
-        mapping = config_state.get('alignment_mapping', {})
-        b_file = file_state.get('boundary_file', 'N/A')
-        f_file = file_state.get('facility_file', 'N/A')
-        info_html += f"""
-        <div style='padding:10px; background:#e8f4fd; border-radius:5px; margin-bottom:10px;'>
-            <b>From Validation Config (auto-populated):</b><br>
-            Boundary levels: {', '.join(levels)}<br>
-            Target columns: {', '.join(targets) or 'none'}<br>
-            Facility column: {fac or 'none'}<br>
-            Mapping: {', '.join(f'{k}&rarr;{v}' for k,v in mapping.items()) or 'none'}<br>
-            Boundary file: {os.path.basename(b_file) if b_file else 'N/A'}<br>
-            Facility file: {os.path.basename(f_file) if f_file else 'N/A'}<br>
-            <em>Column letters and province name will be auto-detected from uploaded files.</em>
-        </div>"""
 
     # Settings widgets
     style = {'description_width': '140px'}
@@ -103,7 +96,10 @@ def build_transform_ui(ctx):
     ctx['widgets']['w_db_name'] = w_db_name
 
     def on_transform(b):
-        progress_log.value = ''
+        progress_bar.value = 0
+        progress_bar.bar_style = 'info'
+        progress_bar.layout.visibility = 'hidden'
+        progress_label.value = ''
         btn_transform.disabled = True
         btn_transform.description = 'RUNNING...'
 
@@ -134,13 +130,13 @@ def build_transform_ui(ctx):
                 return
 
             try:
-                log_progress("Starting transformation...")
+                update_progress(0, 100, "Starting transformation...")
                 level_columns = config_state.get('level_columns', [])
                 target_columns = config_state.get('target_columns', [])
                 header_row = w_boundary_start_row.value
 
                 # Auto-detect column letters from boundary file header
-                log_progress("Detecting column letters from Excel headers...")
+                update_progress(10, 100, "Detecting columns...")
                 header_map = detect_columns(file_state['boundary_file'], header_row)
 
                 boundary_columns = {}
@@ -170,10 +166,10 @@ def build_transform_ui(ctx):
                     btn_transform.description = 'TRANSFORM'
                     return
 
-                log_progress(f"Detected {len(boundary_columns)} boundary columns, {len(target_column_letters)} target columns.")
+                update_progress(20, 100, f"Found {len(boundary_columns)} boundary, {len(target_column_letters)} target columns")
 
                 # Auto-detect province name from the first data row
-                log_progress("Detecting province name from data...")
+                update_progress(25, 100, "Detecting province...")
                 province_col = boundary_columns.get(2)
                 province_name = ''
                 if province_col:
@@ -199,28 +195,13 @@ def build_transform_ui(ctx):
                     btn_transform.description = 'TRANSFORM'
                     return
 
-                log_progress(f"Province detected: {province_name}")
+                update_progress(30, 100, f"Province: {province_name}")
 
                 # Format campaign dates
                 date_fmt = '%d/%m/%Y'
                 campaign_start = w_campaign_start.value.strftime(date_fmt)
                 campaign_end = w_campaign_end.value.strftime(date_fmt)
-                log_progress(f"Campaign: {campaign_start} to {campaign_end}")
-
-                # Show detected mapping
-                detect_html = "<div style='padding:8px; background:#f0f8e8; border-radius:4px; margin:8px 0; font-size:12px;'>"
-                detect_html += f"<b>Auto-detected:</b> Province = <b>{province_name}</b><br>"
-                detect_html += "Columns: " + ", ".join(
-                    f"{name}={boundary_columns.get(i+1, '?')}"
-                    for i, name in enumerate(level_columns) if i > 0
-                )
-                if target_column_letters:
-                    detect_html += "<br>Targets: " + ", ".join(
-                        f"{n}={c}" for n, c in target_column_letters.items()
-                    )
-                detect_html += f"<br>Campaign: {campaign_start} &rarr; {campaign_end}"
-                detect_html += "</div>"
-                display(HTML(detect_html))
+                update_progress(35, 100, "Configuration ready")
 
                 # DB path inside output folder
                 db_filename = w_db_name.value.strip() or 'microplan.db'
@@ -244,7 +225,7 @@ def build_transform_ui(ctx):
                 config_with_cols['target_column_letters'] = target_column_letters
 
                 # Reload modules (clears stale state)
-                log_progress("Reloading modules...")
+                update_progress(40, 100, "Reloading modules...")
 
                 if 'models.db.Base' in sys.modules:
                     sys.modules['models.db.Base'].Base.metadata.clear()
@@ -271,7 +252,7 @@ def build_transform_ui(ctx):
                 set_casing_mode(config_state.get('casing_mode', 'none'))
 
                 # Build and apply config AFTER reload
-                log_progress("Applying configuration...")
+                update_progress(45, 100, "Applying configuration...")
                 from constants.constants import TransformConfig
                 cfg = TransformConfig.from_notebook(config_with_cols, user_inputs)
                 cfg.apply_to_module()
@@ -279,11 +260,11 @@ def build_transform_ui(ctx):
                 # Import and run
                 from transform import run_transform
 
-                log_progress("Starting data transformation...")
+                update_progress(50, 100, "Transforming data...")
                 result = run_transform(
                     boundary_file=file_state['boundary_file'],
                     facility_file=file_state['facility_file'],
-                    progress=log_progress,
+                    progress=update_progress,
                 )
 
                 # Show results + download
@@ -311,11 +292,20 @@ def build_transform_ui(ctx):
                         f'Download {os.path.basename(db_path)}</a>'
                     )
 
+                progress_bar.bar_style = 'success'
+                progress_label.value = (
+                    "<span style='margin-left:10px; color:#2e7d32; font-weight:bold;'>"
+                    "Transformation complete!</span>"
+                )
                 display(HTML(html))
 
             except Exception as ex:
                 import traceback
-                log_progress(f"ERROR: {ex}")
+                progress_bar.bar_style = 'danger'
+                progress_label.value = (
+                    "<span style='margin-left:10px; color:#c62828; font-weight:bold;'>"
+                    "Failed</span>"
+                )
                 display(HTML(
                     f"<div style='padding:10px; background:#ffc7ce; border-radius:5px;'>"
                     f"<b style='color:red'>Transformation Error:</b><br>"
@@ -338,7 +328,6 @@ def build_transform_ui(ctx):
         w_boundary_start_row, w_facility_start_row,
         widgets.HTML("<br>"),
         btn_transform,
-        widgets.HTML("<b>Progress:</b>"),
-        progress_log,
+        progress_box,
         out_transform,
     ])
