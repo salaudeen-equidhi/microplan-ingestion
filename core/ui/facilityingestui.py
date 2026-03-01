@@ -4,7 +4,12 @@ import base64
 import ipywidgets as widgets
 from IPython.display import display, HTML
 from utils.facility_prep import generate_hf_district_mapping, fill_parent_codes
-from utils.api import ingest_facility
+from utils.api import (
+    ingest_facility,
+    verify_facility_names,
+    read_facility_names_from_csv,
+    generate_facility_ingestion_summary,
+)
 
 
 def build_facilityingest_ui(ctx):
@@ -282,6 +287,167 @@ def build_facilityingest_ui(ctx):
     refresh_ingest_btn.on_click(on_refresh_ingest)
     ingest_btn.on_click(on_ingest)
 
+    # ====== Section C: Verify Facility Ingestion ======
+    facility_search_url_input = widgets.Text(
+        value='https://mc-nigeria-uat.digit.org/facility/v1/_search',
+        description='Search URL:',
+        style={'description_width': '120px'},
+        layout=widgets.Layout(width='600px'),
+    )
+
+    verify_file_dropdown = widgets.Dropdown(
+        options=[('Click Refresh to scan', '')],
+        description='Facility CSV:',
+        style={'description_width': '120px'},
+        layout=widgets.Layout(width='600px'),
+    )
+
+    refresh_verify_btn = widgets.Button(description='Refresh', icon='refresh')
+    verify_btn = widgets.Button(
+        description='Verify Facility Ingestion',
+        button_style='success',
+        icon='check',
+    )
+
+    verify_progress_bar = widgets.IntProgress(
+        value=0, min=0, max=1,
+        description='Progress:',
+        bar_style='info',
+        style={'description_width': '80px'},
+        layout=widgets.Layout(width='500px', visibility='hidden'),
+    )
+    verify_progress_label = widgets.HTML(value='')
+    verify_progress_box = widgets.HBox([verify_progress_bar, verify_progress_label])
+    verify_output = widgets.Output()
+
+    report_dir = os.path.join(OUTPUT_DIR, 'facility_reports')
+
+    def scan_verify_csvs():
+        patterns = [
+            os.path.join(OUTPUT_DIR, 'facility_prep', '*.csv'),
+            os.path.join(OUTPUT_DIR, 'facility_build', '*.csv'),
+            os.path.join(OUTPUT_DIR, 'csv_export_*', '*facilit*.csv'),
+            os.path.join(UPLOADS_DIR, '*.csv'),
+        ]
+        files = []
+        for p in patterns:
+            files.extend(glob.glob(p))
+        return sorted(set(files))
+
+    def on_refresh_verify(btn):
+        files = scan_verify_csvs()
+        if files:
+            verify_file_dropdown.options = [('-- select --', '')] + [
+                (os.path.basename(f), f) for f in files
+            ]
+        else:
+            verify_file_dropdown.options = [('No CSV files found', '')]
+        verify_file_dropdown.value = ''
+
+    def on_verify(btn):
+        verify_output.clear_output()
+        verify_progress_bar.layout.visibility = 'hidden'
+        verify_progress_label.value = ''
+        with verify_output:
+            search_url = facility_search_url_input.value.strip()
+            tenant = tenant_input.value.strip()
+            csv_path = verify_file_dropdown.value
+
+            if not search_url:
+                display(HTML('<p style="color:red">Please enter the facility search URL.</p>'))
+                return
+            if not tenant:
+                display(HTML('<p style="color:red">Please enter the Tenant ID in Section B.</p>'))
+                return
+            if not csv_path:
+                display(HTML('<p style="color:red">Please select a facility CSV file.</p>'))
+                return
+            if not os.path.isfile(csv_path):
+                display(HTML(f'<p style="color:red">File not found: {csv_path}</p>'))
+                return
+
+            try:
+                name_col, unique_names = read_facility_names_from_csv(csv_path)
+                if not unique_names:
+                    display(HTML(f'<p style="color:red">No facility names found in column "{name_col}".</p>'))
+                    return
+
+                total = len(unique_names)
+                verify_progress_bar.max = total
+                verify_progress_bar.value = 0
+                verify_progress_bar.bar_style = 'info'
+                verify_progress_bar.layout.visibility = 'visible'
+                verify_progress_label.value = f'<span style="margin-left:10px">Fetching facilities from server...</span>'
+
+                def on_progress(current, total, name, found):
+                    verify_progress_bar.value = current
+                    status = '&#10003;' if found else '&#10007;'
+                    verify_progress_label.value = (
+                        f'<span style="margin-left:10px">Matching {current}/{total} '
+                        f'&mdash; <code>{name}</code> {status}</span>'
+                    )
+
+                result = verify_facility_names(
+                    search_url, tenant_id=tenant, facility_names=unique_names,
+                    progress_cb=on_progress,
+                )
+
+                verify_progress_bar.bar_style = 'success'
+                verify_progress_label.value = (
+                    f'<span style="margin-left:10px; color:#2e7d32; font-weight:bold">'
+                    f'Done &mdash; {total} facilities checked</span>'
+                )
+
+                found_names = result['found_names']
+                not_found_names = result['not_found_names']
+                found_count = len(found_names)
+                not_found_count = len(not_found_names)
+                rate = (found_count / total * 100) if total else 0
+
+                summary = generate_facility_ingestion_summary(
+                    csv_path=csv_path,
+                    found_names=found_names,
+                    output_dir=report_dir,
+                    name_column=name_col,
+                )
+
+                with open(summary['output_path'], 'rb') as dl:
+                    b64 = base64.b64encode(dl.read()).decode()
+                output_name = os.path.basename(summary['output_path'])
+
+                rate_color = '#2e7d32' if rate >= 90 else '#e65100' if rate >= 50 else '#c62828'
+
+                display(HTML(
+                    '<div style="padding:15px; background:#f5f5f5; border-radius:8px; '
+                    'margin-top:10px; border-left:4px solid #1976d2;">'
+                    '<h4 style="margin:0 0 10px 0">Facility Verification Summary</h4>'
+                    '<table style="border-collapse:collapse; width:100%; max-width:400px">'
+                    '<tr><td style="padding:4px 12px 4px 0">Total facilities</td>'
+                    f'<td style="padding:4px 0; font-weight:bold">{total}</td></tr>'
+                    '<tr><td style="padding:4px 12px 4px 0">Found in system</td>'
+                    f'<td style="padding:4px 0; font-weight:bold; color:#2e7d32">{found_count}</td></tr>'
+                    '<tr><td style="padding:4px 12px 4px 0">Not found in system</td>'
+                    f'<td style="padding:4px 0; font-weight:bold; color:#c62828">{not_found_count}</td></tr>'
+                    '<tr><td style="padding:4px 12px 4px 0">Success rate</td>'
+                    f'<td style="padding:4px 0; font-weight:bold; color:{rate_color}">{rate:.1f}%</td></tr>'
+                    '<tr><td style="padding:4px 12px 4px 0">Matched by</td>'
+                    f'<td style="padding:4px 0"><code>{summary["name_column"]}</code></td></tr>'
+                    '</table>'
+                    f'<p style="margin:12px 0 0 0"><a href="data:application/vnd.openxmlformats-officedocument'
+                    f'.spreadsheetml.sheet;base64,{b64}" '
+                    f'download="{output_name}" style="display:inline-block; padding:8px 15px; background:#1976d2; '
+                    f'color:white; text-decoration:none; border-radius:4px;">'
+                    f'&#x2B07; Download {output_name}</a></p>'
+                    '</div>'
+                ))
+            except Exception as e:
+                verify_progress_bar.bar_style = 'danger'
+                verify_progress_label.value = '<span style="margin-left:10px; color:#c62828">Failed</span>'
+                display(HTML(f'<p style="color:red"><b>Error:</b> {e}</p>'))
+
+    refresh_verify_btn.on_click(on_refresh_verify)
+    verify_btn.on_click(on_verify)
+
     # ====== Layout ======
     help_text = """
     <div style="padding:10px; background:#f0f4ff; border-radius:5px; margin-bottom:10px">
@@ -324,4 +490,14 @@ def build_facilityingest_ui(ctx):
         ingest_manual,
         ingest_btn,
         ingest_output,
+
+        widgets.HTML('<hr/>'),
+
+        # Section C
+        widgets.HTML('<h4>C. Verify Facility Ingestion</h4>'),
+        facility_search_url_input,
+        widgets.HBox([verify_file_dropdown, refresh_verify_btn]),
+        verify_btn,
+        verify_progress_box,
+        verify_output,
     ])

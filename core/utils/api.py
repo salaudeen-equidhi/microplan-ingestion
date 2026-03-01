@@ -201,6 +201,163 @@ def verify_boundary_codes(search_url, token=None, tenant_id=None, codes=None, pr
     }
 
 
+def search_single_facility(search_url, token=None, tenant_id=None, facility_name=None, timeout=30):
+    """Search for a facility by name. Returns True if found, False otherwise."""
+    if token is None:
+        token = DEFAULT_AUTH_TOKEN
+    payload = {
+        "RequestInfo": {
+            "authToken": token,
+        },
+        "Facility": {},
+    }
+    headers = {"Content-Type": "application/json"}
+    try:
+        params = {"limit": 1000, "offset": 0, "tenantId": tenant_id}
+        resp = requests.post(search_url, json=payload, headers=headers,
+                             params=params, timeout=timeout)
+        if not resp.ok:
+            return False
+        data = resp.json() if resp.text.strip() else {}
+        facilities = data.get("Facilities", [])
+        name_lower = facility_name.strip().lower()
+        return any(
+            isinstance(f, dict) and str(f.get("name", "")).strip().lower() == name_lower
+            for f in facilities
+        )
+    except Exception:
+        return False
+
+
+def verify_facility_names(search_url, token=None, tenant_id=None, facility_names=None, progress_cb=None):
+    """
+    Verify a list of facility names against the facility search API.
+
+    Fetches all facilities once, then matches each name locally.
+
+    Args:
+        progress_cb: optional callback(current_index, total, name, found)
+
+    Returns dict with keys: found_names (set), not_found_names (set), total (int).
+    """
+    if token is None:
+        token = DEFAULT_AUTH_TOKEN
+
+    # Fetch all facilities in one call
+    payload = {
+        "RequestInfo": {
+            "authToken": token,
+        },
+        "Facility": {},
+    }
+    headers = {"Content-Type": "application/json"}
+
+    server_names = set()
+    offset = 0
+    limit = 1000
+    while True:
+        params = {"limit": limit, "offset": offset, "tenantId": tenant_id}
+        try:
+            resp = requests.post(search_url, json=payload, headers=headers,
+                                 params=params, timeout=60)
+            if not resp.ok:
+                break
+            data = resp.json() if resp.text.strip() else {}
+            facilities = data.get("Facilities", [])
+            if not facilities:
+                break
+            for f in facilities:
+                if isinstance(f, dict):
+                    name = str(f.get("name", "")).strip().lower()
+                    if name:
+                        server_names.add(name)
+            if len(facilities) < limit:
+                break
+            offset += limit
+        except Exception:
+            break
+
+    found_names = set()
+    not_found_names = set()
+    total = len(facility_names)
+
+    for i, name in enumerate(facility_names):
+        name_lower = name.strip().lower()
+        if name_lower in server_names:
+            found_names.add(name)
+        else:
+            not_found_names.add(name)
+        if progress_cb:
+            progress_cb(i + 1, total, name, name_lower in server_names)
+
+    return {
+        "found_names": found_names,
+        "not_found_names": not_found_names,
+        "total": total,
+    }
+
+
+def read_facility_names_from_csv(csv_path):
+    """Read unique facility names from a CSV file."""
+    df = _read_csv_with_fallback(csv_path)
+    lowered = {str(c).strip().lower(): c for c in df.columns}
+    col = None
+    for candidate in ["facility_name", "facilityname", "name"]:
+        if candidate in lowered:
+            col = lowered[candidate]
+            break
+    if not col:
+        raise ValueError(
+            f'No facility_name column found in "{os.path.basename(csv_path)}". '
+            "Expected a column like facility_name/name."
+        )
+    names = [str(v).strip() for v in df[col].tolist() if str(v).strip()]
+    unique_names = list(dict.fromkeys(names))
+    return col, unique_names
+
+
+def generate_facility_ingestion_summary(
+    csv_path, found_names, output_dir,
+    name_column=None, status_column="INGESTION_STATUS",
+):
+    """Generate an Excel summary marking each facility as FOUND or NOT_FOUND."""
+    df = _read_csv_with_fallback(csv_path)
+    if not name_column:
+        lowered = {str(c).strip().lower(): c for c in df.columns}
+        for candidate in ["facility_name", "facilityname", "name"]:
+            if candidate in lowered:
+                name_column = lowered[candidate]
+                break
+    if not name_column:
+        raise ValueError(
+            f'No facility_name column found in "{os.path.basename(csv_path)}".'
+        )
+
+    normalized_found = {str(n).strip().lower() for n in found_names if str(n).strip()}
+    name_values = df[name_column].astype(str).str.strip()
+
+    df[status_column] = name_values.apply(
+        lambda n: "FOUND" if n and n.lower() in normalized_found else "NOT_FOUND"
+    )
+
+    os.makedirs(output_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_name = os.path.splitext(os.path.basename(csv_path))[0]
+    output_path = os.path.join(output_dir, f"{base_name}_facility_summary_{ts}.xlsx")
+    df.to_excel(output_path, index=False)
+
+    total_rows = len(df.index)
+    found_rows = int((df[status_column] == "FOUND").sum())
+    not_found_rows = total_rows - found_rows
+    return {
+        "output_path": output_path,
+        "name_column": name_column,
+        "total_rows": total_rows,
+        "found_rows": found_rows,
+        "not_found_rows": not_found_rows,
+    }
+
+
 def _read_csv_with_fallback(csv_path):
     encodings = ["utf-8-sig", "utf-8", "latin-1"]
     last_error = None
