@@ -289,7 +289,7 @@ def build_facilityingest_ui(ctx):
 
     # ====== Section C: Verify Facility Ingestion ======
     facility_search_url_input = widgets.Text(
-        value='https://mc-nigeria-uat.digit.org/facility/v1/_search',
+        value='http://facility.egov:8080/facility/v1/_search?limit=1000&offset=0&tenantId=bi',
         description='Search URL:',
         style={'description_width': '120px'},
         layout=widgets.Layout(width='600px'),
