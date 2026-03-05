@@ -201,94 +201,83 @@ def verify_boundary_codes(search_url, token=None, tenant_id=None, codes=None, pr
     }
 
 
-def search_single_facility(search_url, token=None, tenant_id=None, facility_name=None, timeout=30):
-    """Search for a facility by name. Returns True if found, False otherwise."""
+def search_facilities_batch(search_url, token=None, tenant_id=None, facility_names=None, timeout=60):
+    """Search for facilities by clientReferenceId list. Returns set of found names."""
     if token is None:
         token = DEFAULT_AUTH_TOKEN
+    if not facility_names:
+        return set()
     payload = {
         "RequestInfo": {
+            "apiId": "stribi",
+            "ver": "stribi",
+            "ts": 0,
+            "action": "stribi",
+            "did": "stribi",
+            "key": "stribi",
+            "msgId": "stribi",
+            "requesterId": "stribi",
             "authToken": token,
+            "userInfo": {"tenantId": tenant_id, "id": 0, "uuid": "stribi"},
         },
-        "Facility": {},
+        "Facility": {
+            "tenantid": tenant_id,
+            "clientReferenceId": list(facility_names),
+        },
     }
     headers = {"Content-Type": "application/json"}
     try:
-        params = {"limit": 1000, "offset": 0, "tenantId": tenant_id}
-        resp = requests.post(search_url, json=payload, headers=headers,
-                             params=params, timeout=timeout)
+        resp = requests.post(search_url, json=payload, headers=headers, timeout=timeout)
         if not resp.ok:
-            return False
+            return set()
         data = resp.json() if resp.text.strip() else {}
         facilities = data.get("Facilities", [])
-        name_lower = facility_name.strip().lower()
-        return any(
-            isinstance(f, dict) and str(f.get("name", "")).strip().lower() == name_lower
-            for f in facilities
-        )
+        found = set()
+        for f in facilities:
+            if isinstance(f, dict):
+                ref = str(f.get("clientReferenceId", "")).strip()
+                if ref:
+                    found.add(ref)
+                    found.add(ref.lower())
+        return found
     except Exception:
-        return False
+        return set()
 
 
-def verify_facility_names(search_url, token=None, tenant_id=None, facility_names=None, progress_cb=None):
+def verify_facility_names(search_url, token=None, tenant_id=None, facility_names=None, progress_cb=None, batch_size=50):
     """
     Verify a list of facility names against the facility search API.
 
-    Fetches all facilities once, then matches each name locally.
+    Sends clientReferenceId as a list in batches.
 
     Args:
         progress_cb: optional callback(current_index, total, name, found)
+        batch_size: number of names per API call
 
     Returns dict with keys: found_names (set), not_found_names (set), total (int).
     """
     if token is None:
         token = DEFAULT_AUTH_TOKEN
 
-    # Fetch all facilities in one call
-    payload = {
-        "RequestInfo": {
-            "authToken": token,
-        },
-        "Facility": {},
-    }
-    headers = {"Content-Type": "application/json"}
-
-    server_names = set()
-    offset = 0
-    limit = 1000
-    while True:
-        params = {"limit": limit, "offset": offset, "tenantId": tenant_id}
-        try:
-            resp = requests.post(search_url, json=payload, headers=headers,
-                                 params=params, timeout=60)
-            if not resp.ok:
-                break
-            data = resp.json() if resp.text.strip() else {}
-            facilities = data.get("Facilities", [])
-            if not facilities:
-                break
-            for f in facilities:
-                if isinstance(f, dict):
-                    name = str(f.get("name", "")).strip().lower()
-                    if name:
-                        server_names.add(name)
-            if len(facilities) < limit:
-                break
-            offset += limit
-        except Exception:
-            break
-
     found_names = set()
     not_found_names = set()
     total = len(facility_names)
+    checked = 0
 
-    for i, name in enumerate(facility_names):
-        name_lower = name.strip().lower()
-        if name_lower in server_names:
-            found_names.add(name)
-        else:
-            not_found_names.add(name)
-        if progress_cb:
-            progress_cb(i + 1, total, name, name_lower in server_names)
+    for i in range(0, total, batch_size):
+        batch = facility_names[i:i + batch_size]
+        batch_found = search_facilities_batch(search_url, token, tenant_id, batch)
+
+        for name in batch:
+            checked += 1
+            if name in batch_found or name.strip().lower() in batch_found:
+                found_names.add(name)
+                is_found = True
+            else:
+                not_found_names.add(name)
+                is_found = False
+            if progress_cb:
+                progress_cb(checked, total, name, is_found)
 
     return {
         "found_names": found_names,
